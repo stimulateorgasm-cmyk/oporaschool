@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;600;700&family=Nunito:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Nunito", "Inter", system-ui, -apple-system, sans-serif;
+  --font-display: "Comfortaa", "Nunito", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --color-brand-teal: #3F6A6E;
+  --color-brand-sage: #5C7367;
+  --color-brand-amber: #C48A40;
+  --color-brand-gold: #F8CE7A;
+  --color-brand-brown-dark: #604530;
+  --color-brand-brown-light: #937154;
+  --color-brand-mint-light: #DEFDFF;
+  --color-brand-mint-pale: #E0F2F6;
+  --color-brand-cream: #FCFBF7;
+
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+}
+
+body {
+  background-color: var(--color-brand-cream);
+  color: var(--color-brand-brown-dark);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}
+
+/* Custom soft shadow */
+.shadow-lamp {
+  box-shadow: 0 10px 30px -10px rgba(96, 69, 48, 0.08), 0 1px 3px rgba(96, 69, 48, 0.03);
+}
+
+.shadow-lamp-lg {
+  box-shadow: 0 20px 40px -15px rgba(96, 69, 48, 0.12), 0 2px 6px rgba(96, 69, 48, 0.04);
+}
+
+.shadow-lamp-inset {
+  box-shadow: inset 0 2px 8px rgba(96, 69, 48, 0.06);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-brand-cream);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-brand-sage);
+  border-radius: 9999px;
+  border: 2px solid var(--color-brand-cream);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-brand-teal);
+}
+

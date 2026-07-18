@@ -1,0 +1,6 @@
+{
+  "name": "Образовательный центр Опора",
+  "description": "Сайт и панель управления для образовательного центра Опора в станице Северской — репетиторы, ОГЭ, ЕГЭ, подготовка к школе",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
