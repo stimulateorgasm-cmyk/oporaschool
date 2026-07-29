@@ -22,6 +22,7 @@ export interface Review {
   rating: number;
   approved: boolean;
   date: string;
+  screenshotUrl?: string; // скриншот отзыва (из Яндекс.Карт, 2ГИС и т.д.)
 }
 
 export interface PriceFormat {

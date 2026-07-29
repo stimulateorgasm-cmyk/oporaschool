@@ -373,6 +373,7 @@ export const TeacherAvatar: React.FC<{
 }> = ({ teacher, className = 'w-24 h-24' }) => {
   const [hasError, setHasError] = useState(false);
   const isHttp = teacher.photoUrl && teacher.photoUrl.startsWith('http');
+  const isLocal = teacher.photoUrl && teacher.photoUrl.startsWith('/');
   const isSvgType = ['teacher_elena', 'teacher_alex', 'teacher_irina', 'teacher_tatyana', 'teacher_dmitry', 'teacher_natalya'].includes(teacher.photoUrl);
 
   if (isHttp && !hasError) {
@@ -380,10 +381,32 @@ export const TeacherAvatar: React.FC<{
       <img
         src={teacher.photoUrl}
         alt={teacher.name}
+        width="200"
+        height="200"
+        loading="lazy"
         onError={() => setHasError(true)}
         className={`${className} rounded-full object-cover border border-brand-sage/10`}
         referrerPolicy="no-referrer"
       />
+    );
+  }
+
+  if (isLocal && !hasError) {
+    // WebP-миниатюра для аватарок, оригинал — фолбэк
+    const thumbWebp = teacher.photoUrl.replace(/\.(jpg|jpeg|png)$/i, '-thumb.webp');
+    return (
+      <picture>
+        <source srcSet={thumbWebp} type="image/webp" />
+        <img
+          src={teacher.photoUrl}
+          alt={teacher.name}
+          width="200"
+          height="200"
+          loading="lazy"
+          onError={() => setHasError(true)}
+          className={`${className} rounded-full object-cover border border-brand-sage/10`}
+        />
+      </picture>
     );
   }
 

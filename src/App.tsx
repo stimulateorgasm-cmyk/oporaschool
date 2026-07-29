@@ -4,26 +4,42 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Search, Filter, Calendar, MapPin, Phone, MessageSquare, Clock, 
-  ChevronLeft, ChevronRight, Star, X, Check, Plus, Edit2, Trash2, 
-  Settings, Shield, Sliders, Database, BookOpen, Calculator, 
-  Percent, PenTool, GraduationCap, Bookmark, Award, FlaskConical, 
-  Baby, Languages, Compass, Globe, Library, Scroll, Box, 
-  BrainCircuit, Smile, HeartHandshake, Backpack, Send, Sparkles, 
-  ExternalLink, CheckSquare, PlusCircle, User, FileText, CheckCircle2
+import {
+  Search, Filter, Calendar, MapPin, Phone, MessageSquare, Clock,
+  ChevronLeft, ChevronRight, Star, X, Check, Plus, Edit2, Trash2,
+  Settings, Shield, Sliders, Database, BookOpen, Calculator,
+  Percent, PenTool, GraduationCap, Bookmark, Award, FlaskConical,
+  Baby, Languages, Compass, Globe, Library, Scroll, Box,
+  BrainCircuit, Smile, HeartHandshake, Backpack, Send, Sparkles,
+  ExternalLink, CheckSquare, PlusCircle, User, FileText, CheckCircle2, ZoomIn, Menu
 } from 'lucide-react';
 import { LogoSVG, CozyClassroomSVG, TeacherCardSVG, TeacherAvatar } from './components/Illustrations';
+import CatalogFilter from './components/CatalogFilter';
 import { INITIAL_TEACHERS, INITIAL_REVIEWS, SERVICE_ITEMS } from './data';
 import { Teacher, Review, ServiceItem, LeadApplication, BitrixConfig } from './types';
 
 // Password for admin panel
 const ADMIN_PASSWORD = 'opora';
 
+// Версия данных -- меняем при изменении структуры teachers/data
+const DATA_VERSION = 14;
+
 export default function App() {
-  // --- Persistent State ---
+  // Авто-миграция: если версия старая -- сбрасываем кэш учителей
   const [teachers, setTeachers] = useState<Teacher[]>(() => {
-    const saved = localStorage.getItem('opora_teachers_v15');
+    const storedVersion = localStorage.getItem('opora_data_version');
+    if (!storedVersion || Number(storedVersion) < DATA_VERSION) {
+      // Чистим все старые ключи с учителями
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('opora_teachers')) {
+          localStorage.removeItem(key);
+        }
+      }
+      localStorage.setItem('opora_data_version', String(DATA_VERSION));
+      return INITIAL_TEACHERS;
+    }
+    const saved = localStorage.getItem('opora_teachers');
     return saved ? JSON.parse(saved) : INITIAL_TEACHERS;
   });
 
@@ -63,7 +79,7 @@ export default function App() {
 
   // Save states to localStorage on change
   useEffect(() => {
-    localStorage.setItem('opora_teachers_v15', JSON.stringify(teachers));
+    localStorage.setItem('opora_teachers', JSON.stringify(teachers));
   }, [teachers]);
 
   useEffect(() => {
@@ -78,15 +94,177 @@ export default function App() {
     localStorage.setItem('opora_bitrix', JSON.stringify(bitrixConfig));
   }, [bitrixConfig]);
 
-  // --- Filtering & UI States ---
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedGrade, setSelectedGrade] = useState<string>('all');
-  const [selectedFormat, setSelectedFormat] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  // --- UI States ---
+
+  // trial button subject picker
+  const [showTrialSubjects, setShowTrialSubjects] = useState(false);
+
+  // Закрытие дропдауна выбора предмета по клику вне
+  useEffect(() => {
+    if (!showTrialSubjects) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('#trial_button') && !target.closest('#trial_subjects_dropdown')) {
+        setShowTrialSubjects(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showTrialSubjects]);
+
+  // Ленивая загрузка Яндекс.Карты -- iframe грузится только когда секция видна
+  useEffect(() => {
+    const el = mapContainerRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setMapVisible(true); obs.disconnect(); } },
+      { rootMargin: '200px' }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   // active teacher popup
   const [activeTeacher, setActiveTeacher] = useState<Teacher | null>(null);
+
+  // unified helper: сколько карточек/колонок видно в одном экране
+  const cardsPerView = () => isMobile() ? 1 : 3;
+
+  // teacher slider -- перемешиваем всех кроме Надежды (t7), она всегда первая
+  const [shuffledTeachers] = useState<Teacher[]>(() => {
+    const shumkina = teachers.find(t => t.id === 't7');
+    const others = teachers.filter(t => t.id !== 't7');
+    // Fisher-Yates shuffle
+    for (let i = others.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [others[i], others[j]] = [others[j], others[i]];
+    }
+    return shumkina ? [shumkina, ...others] : teachers;
+  });
+
+  const teacherSliderRef = useRef<HTMLDivElement>(null);
+
+  const [teacherScrollIdx, setTeacherScrollIdx] = useState<number>(0);
+  const [teacherCanScrollLeft, setTeacherCanScrollLeft] = useState(false);
+  const [teacherCanScrollRight, setTeacherCanScrollRight] = useState(true);
   
+  // interior gallery lightbox
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [bigPhotoUrl, setBigPhotoUrl] = useState<string | null>(null);
+  // review screenshots lightbox (листается как интерьеры)
+  const [reviewLightboxIndex, setReviewLightboxIndex] = useState<number | null>(null);
+  // process photos — герой: стопка + лайтбокс
+  const [heroPhotoIdx, setHeroPhotoIdx] = useState<number>(0);
+  const [processLightboxIndex, setProcessLightboxIndex] = useState<number | null>(null);
+  const [interiorScrollIdx, setInteriorScrollIdx] = useState<number>(0);
+  const interiorSliderRef = useRef<HTMLDivElement>(null);
+  const touchStartX = useRef<number>(0);
+  const touchStartY = useRef<number>(0);
+
+  // Мобильное меню
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // lazy load яндекс-карты
+  const [mapVisible, setMapVisible] = useState(false);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+
+  // refs для клавиатурной навигации (чтобы не было проблем с замыканием)
+  const lightboxIndexRef = useRef<number | null>(null);
+  lightboxIndexRef.current = lightboxIndex;
+  const reviewLightboxRef = useRef<number | null>(null);
+  reviewLightboxRef.current = reviewLightboxIndex;
+  const processLightboxRef = useRef<number | null>(null);
+  processLightboxRef.current = processLightboxIndex;
+  const activeTeacherRef = useRef<Teacher | null>(null);
+  activeTeacherRef.current = activeTeacher;
+
+  // interior photos list (entrance -- фасад здания, всегда первое)
+  const INTERIOR_PHOTOS = ['entrance', 'IMG_5203', 'IMG_5205', 'IMG_5207', 'IMG_5208', 'IMG_5209', 'IMG_5210', 'IMG_5211', 'IMG_5225', 'IMG_5226', 'IMG_5227', 'IMG_5229'];
+
+  // process photos (учебный процесс — фото с занятий)
+  const PROCESS_PHOTOS = Array.from({length: 7}, (_, i) => i + 1); // process-1.jpg … process-7.jpg
+
+  const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 640;
+
+  const scrollTeachersBy = (dir: 'left' | 'right') => {
+    const el = teacherSliderRef.current;
+    if (!el) return;
+    const card = el.querySelector('.teacher-slide-card') as HTMLElement;
+    if (!card) return;
+    const cardWidth = card.offsetWidth + 24;
+    const step = cardsPerView();
+    const scrollAmount = cardWidth * step * (dir === 'left' ? -1 : 1);
+    el.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+  };
+
+  const scrollInteriorBy = (dir: 'left' | 'right') => {
+    const el = interiorSliderRef.current;
+    if (!el) return;
+    const card = el.querySelector('.interior-slide-card') as HTMLElement;
+    if (!card) return;
+    const cardWidth = card.offsetWidth + 16;
+    const scrollAmount = cardWidth * cardsPerView() * (dir === 'left' ? -1 : 1);
+    el.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+  };
+
+  // Блокировка скролла фона при открытом попапе или лайтбоксе
+  // Стрелки клавиатуры листают фото в лайтбоксе или переключают педагогов
+  const isOverlayOpen = activeTeacher !== null || lightboxIndex !== null || bigPhotoUrl !== null || reviewLightboxIndex !== null || processLightboxIndex !== null;
+  useEffect(() => {
+    if (!isOverlayOpen) return;
+    document.body.style.overflow = 'hidden';
+    const handleKeys = (e: KeyboardEvent) => {
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Spacebar'].includes(e.key)) {
+        e.preventDefault();
+        // Навигация в лайтбоксе интерьеров
+        const idx = lightboxIndexRef.current;
+        if (idx !== null) {
+          if (e.key === 'ArrowLeft' && idx > 0) {
+            setLightboxIndex(idx - 1);
+          } else if (e.key === 'ArrowRight' && idx < INTERIOR_PHOTOS.length - 1) {
+            setLightboxIndex(idx + 1);
+          }
+          return;
+        }
+        // Навигация в лайтбоксе скриншотов отзывов
+        const ri = reviewLightboxRef.current;
+        if (ri !== null) {
+          if (e.key === 'ArrowLeft' && ri > 0) {
+            setReviewLightboxIndex(ri - 1);
+          } else if (e.key === 'ArrowRight' && ri < approvedReviews.length - 1) {
+            setReviewLightboxIndex(ri + 1);
+          }
+          return;
+        }
+        // Навигация в лайтбоксе фото процесса
+        const pi = processLightboxRef.current;
+        if (pi !== null) {
+          if (e.key === 'ArrowLeft' && pi > 0) {
+            setProcessLightboxIndex(pi - 1);
+          } else if (e.key === 'ArrowRight' && pi < PROCESS_PHOTOS.length - 1) {
+            setProcessLightboxIndex(pi + 1);
+          }
+          return;
+        }
+        // Навигация между преподавателями в открытом попапе
+        const t = activeTeacherRef.current;
+        if (t) {
+          const idx = shuffledTeachers.findIndex(s => s.id === t.id);
+          if (e.key === 'ArrowLeft' && idx > 0) {
+            setActiveTeacher(shuffledTeachers[idx - 1]);
+          } else if (e.key === 'ArrowRight' && idx < shuffledTeachers.length - 1) {
+            setActiveTeacher(shuffledTeachers[idx + 1]);
+          }
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeys, { capture: true });
+    return () => {
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', handleKeys, { capture: true });
+    };
+  }, [isOverlayOpen]);
+
   // review creation modal
   const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
   const [newReview, setNewReview] = useState({ name: '', className: '', text: '', rating: 5 });
@@ -112,8 +290,31 @@ export default function App() {
     name: '', subjects: [], bio: '', education: '', experience: '', photoUrl: '', avatarBg: 'bg-emerald-100 text-emerald-800'
   });
 
-  // reviews review index for carousel
-  const [reviewIndex, setReviewIndex] = useState<number>(0);
+  // review slider (horizontal scroll)
+  const reviewSliderRef = useRef<HTMLDivElement>(null);
+  const [reviewScrollIdx, setReviewScrollIdx] = useState<number>(0);
+
+  // Стрелки клавиатуры для слайдера отзывов — глобальный обработчик,
+  // работает когда секция видна в окне и нет открытых оверлеев
+  useEffect(() => {
+    const handleReviewKeys = (e: KeyboardEvent) => {
+      if (isOverlayOpen) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const slider = reviewSliderRef.current;
+      if (!slider) return;
+      const rect = slider.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > window.innerHeight) return;
+      e.preventDefault();
+      const card = slider.querySelector('.review-slide-card') as HTMLElement;
+      if (!card) return;
+      const cardW = card.offsetWidth + 16;
+      const dir = e.key === 'ArrowLeft' ? -1 : 1;
+      slider.scrollBy({ left: cardW * dir, behavior: 'smooth' });
+    };
+    document.addEventListener('keydown', handleReviewKeys, { capture: true });
+    return () => document.removeEventListener('keydown', handleReviewKeys, { capture: true });
+  }, [isOverlayOpen]);
 
   // --- Helpers & Logic ---
   const handlePhoneChange = (value: string) => {
@@ -184,6 +385,22 @@ export default function App() {
     // Update local state
     setLeads(prev => [newLead, ...prev]);
 
+    // Отправка в Telegram-бота (всегда, независимо от Bitrix)
+    try {
+      await fetch('/api/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: leadForm.name,
+          phone: leadForm.phone,
+          subject: leadForm.subject,
+          comment: leadForm.comment
+        })
+      });
+    } catch (err) {
+      console.error('Ошибка отправки в Telegram:', err);
+    }
+
     // Dispatch to Bitrix24 if enabled and filled
     if (bitrixConfig.isEnabled && bitrixConfig.webhookUrl) {
       try {
@@ -224,7 +441,7 @@ export default function App() {
     }, 800);
   };
 
-  const submitReview = (e: React.FormEvent) => {
+  const submitReview = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReview.name || !newReview.text) return;
 
@@ -241,6 +458,22 @@ export default function App() {
     setReviews(prev => [...prev, review]);
     setShowReviewModal(false);
     setNewReview({ name: '', className: '', text: '', rating: 5 });
+
+    // Отправка в Telegram-бота
+    try {
+      await fetch('/api/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newReview.name,
+          className: newReview.className || 'Общий отзыв',
+          text: newReview.text
+        })
+      });
+    } catch (err) {
+      console.error('Ошибка отправки в Telegram:', err);
+    }
+
     alert('Спасибо за ваш теплый отзыв! Он появится на сайте после модерации администратором в целях безопасности.');
   };
 
@@ -350,118 +583,82 @@ export default function App() {
     }
   };
 
-  // --- Filter Logic ---
-  const filteredServices = SERVICE_ITEMS.filter(service => {
-    // Filter by category
-    if (selectedCategory !== 'all' && service.category !== selectedCategory) {
-      return false;
-    }
-    // Filter by grade
-    if (selectedGrade !== 'all') {
-      if (selectedGrade === 'preschool' && !service.grades.includes('preschool')) return false;
-      if (selectedGrade === '1-4' && !service.grades.includes('1-4')) return false;
-      if (selectedGrade === '5-8' && !service.grades.includes('5-8')) return false;
-      if (selectedGrade === '9-11' && !service.grades.includes('9-11')) return false;
-      // Exam specific filters
-      if (selectedGrade === 'oge' && !service.name.toLowerCase().includes('огэ')) return false;
-      if (selectedGrade === 'ege' && !service.name.toLowerCase().includes('егэ')) return false;
-    }
-    // Filter by format (Online filter logic)
-    if (selectedFormat !== 'all') {
-      const hasOnline = service.formats.some(f => f.isOnline || f.name.toLowerCase().includes('онлайн'));
-      const hasGroup = service.formats.some(f => f.name.toLowerCase().includes('группа') || f.name.toLowerCase().includes('абонемент'));
-      const hasIndividual = service.formats.some(f => f.name.toLowerCase().includes('индивидуально') || f.name.toLowerCase().includes('консультация'));
-      
-      if (selectedFormat === 'online' && !hasOnline) return false;
-      if (selectedFormat === 'group' && !hasGroup) return false;
-      if (selectedFormat === 'individual' && !hasIndividual) return false;
-    }
-    // Search query
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const nameMatch = service.name.toLowerCase().includes(q);
-      const descMatch = service.description.toLowerCase().includes(q);
-      if (!nameMatch && !descMatch) return false;
-    }
-    return true;
-  });
-
   // Approved reviews for user carousel
   const approvedReviews = reviews.filter(r => r.approved);
-
-  const nextReview = () => {
-    if (approvedReviews.length === 0) return;
-    setReviewIndex((prev) => (prev + 1) % approvedReviews.length);
-  };
-
-  const prevReview = () => {
-    if (approvedReviews.length === 0) return;
-    setReviewIndex((prev) => (prev - 1 + approvedReviews.length) % approvedReviews.length);
-  };
 
   return (
     <div className="min-h-screen flex flex-col selection:bg-brand-gold selection:text-brand-brown-dark" id="app_root">
       
       {/* 1. HEADER / NAVIGATION */}
-      <header className="sticky top-0 z-40 bg-brand-cream/95 backdrop-blur-md border-b border-brand-mint-pale shadow-lamp transition-all duration-300" id="header_nav">
+      <header className="sticky top-0 z-40 bg-white border-b border-brand-mint-pale shadow-lamp transition-all duration-300" id="header_nav">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           
-          {/* Logo & Slogan */}
-          <a href="#hero" className="flex items-center gap-3 group">
-            <LogoSVG className="w-12 h-12 transition-transform duration-500 group-hover:rotate-6" />
-            <div className="flex flex-col">
-              <span className="font-display font-bold text-xl tracking-wider text-brand-teal flex items-center">
-                ОП<span className="text-brand-amber">О</span>РА
-              </span>
-              <span className="text-[10px] text-brand-brown-light tracking-tight font-medium -mt-1 hidden sm:inline">
-                Образовательный центр
-              </span>
-            </div>
+          {/* Logo */}
+          <a href="#hero" className="flex items-center gap-3 group flex-shrink-0">
+            <img
+              src="/assets/logos/logo-long.jpg"
+              alt="Образовательный центр Опора"
+              width="176"
+              height="40"
+              className="h-10 w-auto transition-transform duration-500 group-hover:scale-105"
+            />
           </a>
 
           {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-brand-brown-dark/90">
             <a href="#services" className="hover:text-brand-teal transition-colors">Услуги и цены</a>
+            <a href="#promos" className="hover:text-brand-amber transition-colors">Акции</a>
             <a href="#teachers" className="hover:text-brand-teal transition-colors">Педагоги</a>
+            <a href="#interior" className="hover:text-brand-teal transition-colors">Пространство</a>
+            <a href="#founder" className="hover:text-brand-teal transition-colors">Основатель</a>
             <a href="#reviews" className="hover:text-brand-teal transition-colors">Отзывы</a>
             <a href="#contacts" className="hover:text-brand-teal transition-colors">Контакты</a>
           </nav>
 
           {/* Action Buttons */}
           <div className="flex items-center gap-3">
-            {/* Admin Toggle button */}
-            <button 
-              onClick={() => {
-                setShowAdmin(!showAdmin);
-                if (!isAdminAuthenticated) {
-                  // Pre-fill default password for simple grading/testing convenience!
-                  setAdminPasswordInput(ADMIN_PASSWORD);
-                }
-              }}
-              className="p-2 text-brand-sage hover:text-brand-teal rounded-full hover:bg-brand-mint-light/40 transition-all"
-              title="Панель управления (Админка)"
-              id="admin_toggle_btn"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
-
-            <a 
-              href="#contacts" 
+            <a
+              href="#booking_section"
               className="bg-brand-teal hover:bg-brand-sage text-brand-cream font-bold py-2.5 px-5 rounded-xl shadow-lamp hover:shadow-md transition-all text-sm"
               id="header_order_btn"
             >
               Записаться
             </a>
+
+            {/* Бургер-меню — мобилки */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 text-brand-teal hover:text-brand-sage transition-colors"
+              aria-label="Меню"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
           </div>
         </div>
       </header>
+
+      {/* Мобильное меню */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 top-20 z-30 md:hidden bg-black/40 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)}>
+          <nav className="bg-white mx-4 mt-2 rounded-2xl shadow-xl border border-brand-sage/20 p-4 flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+            <a href="#services" onClick={() => setMobileMenuOpen(false)} className="px-4 py-3 rounded-xl hover:bg-brand-mint-pale text-brand-brown-dark font-semibold text-sm transition-colors">Услуги и цены</a>
+            <a href="#promos" onClick={() => setMobileMenuOpen(false)} className="px-4 py-3 rounded-xl hover:bg-brand-mint-pale text-brand-amber font-semibold text-sm transition-colors">Акции</a>
+            <a href="#teachers" onClick={() => setMobileMenuOpen(false)} className="px-4 py-3 rounded-xl hover:bg-brand-mint-pale text-brand-brown-dark font-semibold text-sm transition-colors">Педагоги</a>
+            <a href="#interior" onClick={() => setMobileMenuOpen(false)} className="px-4 py-3 rounded-xl hover:bg-brand-mint-pale text-brand-brown-dark font-semibold text-sm transition-colors">Пространство</a>
+            <a href="#founder" onClick={() => setMobileMenuOpen(false)} className="px-4 py-3 rounded-xl hover:bg-brand-mint-pale text-brand-brown-dark font-semibold text-sm transition-colors">Основатель</a>
+            <a href="#reviews" onClick={() => setMobileMenuOpen(false)} className="px-4 py-3 rounded-xl hover:bg-brand-mint-pale text-brand-brown-dark font-semibold text-sm transition-colors">Отзывы</a>
+            <a href="#contacts" onClick={() => setMobileMenuOpen(false)} className="px-4 py-3 rounded-xl hover:bg-brand-mint-pale text-brand-brown-dark font-semibold text-sm transition-colors">Контакты</a>
+            <a href="#booking_section" onClick={() => setMobileMenuOpen(false)} className="mt-1 px-4 py-3 rounded-xl bg-brand-teal text-brand-cream font-bold text-sm text-center transition-colors hover:bg-brand-sage">Записаться</a>
+          </nav>
+        </div>
+      )}
 
       {/* ADMIN PANEL OVERLAY/PANEL */}
       {showAdmin && (
         <div className="bg-brand-mint-pale border-b-2 border-brand-teal/20 p-4 sm:p-6 shadow-lamp-inset relative transition-all duration-300" id="admin_workspace">
           <button 
             onClick={() => setShowAdmin(false)}
-            className="absolute top-4 right-4 p-2 text-brand-brown-dark/60 hover:text-brand-brown-dark hover:bg-brand-cream rounded-full"
+            className="absolute top-4 right-4 p-3 text-brand-brown-dark/60 hover:text-brand-brown-dark hover:bg-brand-cream rounded-full"
             id="close_admin_btn"
           >
             <X className="w-5 h-5" />
@@ -567,7 +764,7 @@ export default function App() {
                                   </td>
                                   <td className="p-3 font-mono text-brand-teal">{lead.phone}</td>
                                   <td className="p-3 font-medium text-brand-brown-dark">{lead.subject}</td>
-                                  <td className="p-3 text-xs max-w-xs text-brand-brown-light italic">{lead.comment || '—'}</td>
+                                  <td className="p-3 text-xs max-w-xs text-brand-brown-light italic">{lead.comment || '--'}</td>
                                   <td className="p-3">
                                     <select 
                                       value={lead.status}
@@ -793,7 +990,11 @@ export default function App() {
                                   ))}
                                 </div>
                               </div>
-                              <p className="text-xs text-brand-brown-light italic mt-2">"{rev.text}"</p>
+                              {rev.screenshotUrl ? (
+                                <img src={rev.screenshotUrl} alt={rev.name} className="w-full h-20 object-cover rounded-lg border border-brand-sage/10 mt-1" />
+                              ) : (
+                                <p className="text-xs text-brand-brown-light italic mt-2">"{rev.text}"</p>
+                              )}
                             </div>
 
                             <div className="flex justify-between items-center pt-2 border-t border-brand-sage/5">
@@ -887,18 +1088,19 @@ export default function App() {
       )}
 
       {/* 2. HERO SECTION */}
+      <main>
       <section className="relative overflow-hidden bg-gradient-to-b from-brand-cream to-brand-mint-pale/60 pt-10 pb-16 md:py-24" id="hero">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
             
             {/* Left Column Text details */}
-            <div className="lg:col-span-7 space-y-6 text-center lg:text-left relative z-10">
+            <div className="lg:col-span-6 space-y-6 text-center lg:text-left relative z-10">
               
               {/* Address indicator */}
-              <div className="inline-flex items-center gap-2 bg-brand-teal/10 border border-brand-teal/20 text-brand-teal font-bold px-4 py-1.5 rounded-full text-xs sm:text-sm animate-pulse">
+              <a href="#contacts" className="inline-flex items-center gap-2 bg-brand-teal/10 border border-brand-teal/20 text-brand-teal font-bold px-4 py-1.5 rounded-full text-xs sm:text-sm animate-pulse hover:bg-brand-teal/20 hover:border-brand-teal/30 transition-colors cursor-pointer">
                 <MapPin className="w-4 h-4 text-brand-amber" />
                 <span>📍 Станица Северская, ул. Ленина, 73</span>
-              </div>
+              </a>
 
               {/* Slogan */}
               <div className="text-brand-amber font-display font-bold text-base sm:text-lg tracking-wider uppercase">
@@ -906,14 +1108,16 @@ export default function App() {
               </div>
 
               {/* Title */}
-              <h1 className="font-display font-black text-3xl sm:text-4xl md:text-5xl text-brand-teal leading-[1.1] select-none">
-                Опора — образовательный центр <br className="hidden sm:inline" />
-                <span className="text-brand-amber">в станице Северской</span>
+              <h1 className="font-display font-black text-5xl sm:text-6xl md:text-7xl text-brand-teal leading-[1.05] select-none">
+                Опора
               </h1>
+              <p className="font-display font-bold text-xl sm:text-2xl md:text-3xl text-brand-amber leading-tight">
+                образовательный центр<br className="sm:hidden" /> в станице Северской
+              </p>
 
               {/* Subtitle */}
               <p className="text-brand-sage text-base sm:text-lg leading-relaxed max-w-2xl mx-auto lg:mx-0 italic">
-                Профессиональные репетиторы, заботливая подготовка к школьным экзаменам ОГЭ/ЕГЭ, увлекательная продлёнка, творческие курсы 3D-моделирования и нейропсихологическая помощь детям в станице Северской. Развитие без стресса!
+                Профессиональные репетиторы, аккуратная подготовка к школьным экзаменам ОГЭ/ЕГЭ, увлекательная продлёнка, творческие курсы 3D-моделирования и нейропсихологическая помощь детям в станице Северской. Развитие без стресса!
               </p>
 
               {/* Buttons */}
@@ -924,13 +1128,43 @@ export default function App() {
                 >
                   Подобрать занятия
                 </a>
-                <button 
-                  onClick={() => handleBookNow('Пробное занятие', 'Запись на бесплатное вводное тестирование/пробное занятие')}
-                  className="w-full sm:w-auto text-center bg-transparent hover:bg-brand-teal/10 text-brand-teal font-bold py-4 px-8 rounded-3xl border-2 border-brand-teal transition-all duration-300 text-base"
-                  id="trial_button"
-                >
-                  Записаться на пробное
-                </button>
+                <div className="relative w-full sm:w-auto">
+                  <button
+                    onClick={() => setShowTrialSubjects(!showTrialSubjects)}
+                    className="w-full text-center bg-transparent hover:bg-brand-teal/10 text-brand-teal font-bold py-4 px-8 rounded-3xl border-2 border-brand-teal transition-all duration-300 text-base"
+                    id="trial_button"
+                  >
+                    Записаться на пробное
+                  </button>
+                  {showTrialSubjects && (
+                    <div id="trial_subjects_dropdown" className="absolute top-full mt-2 left-0 right-0 sm:w-72 bg-white rounded-2xl shadow-xl border border-brand-sage/20 p-3 z-30 grid gap-1">
+                      <p className="text-xs text-brand-brown-light font-medium px-2 pb-1">Выберите предмет:</p>
+                      {[
+                        { id: 'math', label: 'Математика' },
+                        { id: 'russian', label: 'Русский язык' },
+                        { id: 'english', label: 'Английский язык' },
+                        { id: 'physics', label: 'Физика' },
+                        { id: 'chemistry', label: 'Химия' },
+                        { id: 'history', label: 'История' },
+                        { id: 'social', label: 'Обществознание' },
+                        { id: 'development', label: 'Развитие / Творчество' },
+                        { id: 'creativity', label: '3D-моделирование' },
+                        { id: 'other', label: 'Продлёнка' },
+                      ].map(cat => (
+                        <button
+                          key={cat.id}
+                          onClick={() => {
+                            setShowTrialSubjects(false);
+                            handleBookNow(cat.label, `Запись на бесплатное вводное тестирование/пробное занятие: ${cat.label}`);
+                          }}
+                          className="text-left px-3 py-2 rounded-xl hover:bg-brand-mint-pale/40 text-sm font-medium text-brand-brown-dark hover:text-brand-teal transition-colors"
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Small details */}
@@ -947,20 +1181,155 @@ export default function App() {
               </div>
             </div>
 
-            {/* Right Column Illustration */}
-            <div className="lg:col-span-5 flex justify-center relative">
-              <div className="w-full max-w-md md:max-w-xl lg:max-w-full relative p-4">
-                {/* Decorative retro stamp or glow */}
+            {/* Right Column — стопка фотографий */}
+            <div className="lg:col-span-6 flex justify-center relative">
+              <div className="w-full max-w-lg md:max-w-2xl lg:max-w-full relative px-2 sm:px-0" style={{ touchAction: 'pan-y' }}
+                onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; touchStartY.current = e.touches[0].clientY; }}
+                onTouchEnd={(e) => {
+                  const dx = e.changedTouches[0].clientX - touchStartX.current;
+                  const dy = e.changedTouches[0].clientY - touchStartY.current;
+                  if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+                  setHeroPhotoIdx(prev => dx < 0 ? (prev + 1) % PROCESS_PHOTOS.length : (prev - 1 + PROCESS_PHOTOS.length) % PROCESS_PHOTOS.length);
+                }}
+              >
+                {/* Декоративный фон */}
                 <div className="absolute inset-0 bg-white/40 rounded-[48px] -rotate-3 -z-10"></div>
-                <div className="absolute -top-6 -left-6 w-16 h-16 bg-brand-gold rounded-full opacity-60 filter blur-xl -z-10 animate-bounce"></div>
+                <div className="absolute -top-6 -left-6 w-16 h-16 bg-brand-gold rounded-full opacity-60 filter blur-xl -z-10"></div>
                 <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-brand-teal rounded-full opacity-10 filter blur-2xl -z-10"></div>
-                
-                <CozyClassroomSVG />
+
+                <div className="relative group/carousel">
+                  {/* Стопка: 3 слоя */}
+                  <div className="relative">
+                    {/* Задний слой (heroPhotoIdx + 2) */}
+                    <div className="absolute top-4 left-4 right-4 bottom-[-10px] rounded-[32px] overflow-hidden opacity-20 -rotate-6 transition-all duration-500 ease-out pointer-events-none">
+                      <picture>
+                        <source srcSet={`/assets/process/process-${PROCESS_PHOTOS[(heroPhotoIdx + 2) % PROCESS_PHOTOS.length]}.webp`} type="image/webp" />
+                        <img src={`/assets/process/process-${PROCESS_PHOTOS[(heroPhotoIdx + 2) % PROCESS_PHOTOS.length]}.jpg`} alt="" width="400" height="267" className="w-full h-72 sm:h-80 md:h-96 object-cover" />
+                      </picture>
+                    </div>
+
+                    {/* Средний слой (heroPhotoIdx + 1) */}
+                    <div className="absolute top-2 left-2 right-2 bottom-[-5px] rounded-[32px] overflow-hidden opacity-40 -rotate-2 transition-all duration-500 ease-out pointer-events-none">
+                      <picture>
+                        <source srcSet={`/assets/process/process-${PROCESS_PHOTOS[(heroPhotoIdx + 1) % PROCESS_PHOTOS.length]}.webp`} type="image/webp" />
+                        <img src={`/assets/process/process-${PROCESS_PHOTOS[(heroPhotoIdx + 1) % PROCESS_PHOTOS.length]}.jpg`} alt="" width="400" height="267" className="w-full h-72 sm:h-80 md:h-96 object-cover" />
+                      </picture>
+                    </div>
+
+                    {/* Передний слой — клик = лайтбокс */}
+                    <button
+                      onClick={() => setProcessLightboxIndex(heroPhotoIdx)}
+                      className="relative w-full rounded-[32px] overflow-hidden shadow-lamp border border-brand-sage/10 transition-all duration-500 ease-out"
+                    >
+                      <picture>
+                        <source srcSet={`/assets/process/process-${PROCESS_PHOTOS[heroPhotoIdx]}.webp`} type="image/webp" />
+                        <img
+                          src={`/assets/process/process-${PROCESS_PHOTOS[heroPhotoIdx]}.jpg`}
+                          alt="Учебный процесс в образовательном центре Опора"
+                          width="800" height="534"
+                          fetchPriority="high"
+                          className="w-full h-72 sm:h-80 md:h-96 object-cover"
+                        />
+                      </picture>
+                    </button>
+
+                    {/* Стрелки слева/справа */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setHeroPhotoIdx(prev => (prev - 1 + PROCESS_PHOTOS.length) % PROCESS_PHOTOS.length); }}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 z-10 p-2 sm:p-2.5 bg-white/80 backdrop-blur-sm rounded-full shadow-md text-brand-teal hover:bg-white hover:shadow-lg opacity-0 group-hover/carousel:opacity-100 sm:opacity-70 transition-all"
+                      aria-label="Предыдущее фото"
+                    >
+                      <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setHeroPhotoIdx(prev => (prev + 1) % PROCESS_PHOTOS.length); }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 z-10 p-2 sm:p-2.5 bg-white/80 backdrop-blur-sm rounded-full shadow-md text-brand-teal hover:bg-white hover:shadow-lg opacity-0 group-hover/carousel:opacity-100 sm:opacity-70 transition-all"
+                      aria-label="Следующее фото"
+                    >
+                      <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Точки-индикаторы */}
+                <div className="flex justify-center gap-1.5 mt-5">
+                  {PROCESS_PHOTOS.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setHeroPhotoIdx(i)}
+                      className={`h-1.5 rounded-full transition-all ${i === heroPhotoIdx ? 'bg-brand-teal w-4' : 'bg-brand-sage/30 hover:bg-brand-sage/50 w-1.5'}`}
+                      aria-label={`Фото ${i + 1}`}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
 
           </div>
         </div>
+
+
+        {/* Лайтбокс фото процесса */}
+        {processLightboxIndex !== null && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+            onClick={() => setProcessLightboxIndex(null)}
+            onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; touchStartY.current = e.touches[0].clientY; }}
+            onTouchEnd={(e) => {
+              const dx = e.changedTouches[0].clientX - touchStartX.current;
+              const dy = e.changedTouches[0].clientY - touchStartY.current;
+              if (dy > 50 && Math.abs(dy) > Math.abs(dx)) { setProcessLightboxIndex(null); return; }
+              if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return;
+              if (dx < 0 && processLightboxIndex < PROCESS_PHOTOS.length - 1) setProcessLightboxIndex(processLightboxIndex + 1);
+              if (dx > 0 && processLightboxIndex > 0) setProcessLightboxIndex(processLightboxIndex - 1);
+            }}
+          >
+            <button
+              onClick={() => setProcessLightboxIndex(null)}
+              className="absolute top-4 right-4 z-10 p-3 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-all"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            {processLightboxIndex > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setProcessLightboxIndex(processLightboxIndex - 1); }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-all"
+                aria-label="Предыдущее фото"
+              >
+                <ChevronLeft className="w-8 h-8" />
+              </button>
+            )}
+
+            {processLightboxIndex < PROCESS_PHOTOS.length - 1 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setProcessLightboxIndex(processLightboxIndex + 1); }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-all"
+                aria-label="Следующее фото"
+              >
+                <ChevronRight className="w-8 h-8" />
+              </button>
+            )}
+
+            <span className="absolute top-4 left-4 z-10 text-white/60 text-sm font-mono pointer-events-none">
+              {processLightboxIndex + 1} / {PROCESS_PHOTOS.length}
+            </span>
+
+            <picture>
+              <source srcSet={`/assets/process/process-${PROCESS_PHOTOS[processLightboxIndex]}.webp`} type="image/webp" />
+              <img
+                src={`/assets/process/process-${PROCESS_PHOTOS[processLightboxIndex]}.jpg`}
+                alt={`Учебный процесс в центре Опора — фото ${processLightboxIndex + 1}`}
+                width="1600"
+                height="1200"
+                className="rounded-2xl shadow-2xl"
+                style={{ maxWidth: 'calc(100vw - 32px)', maxHeight: '90vh', width: 'auto', height: 'auto' }}
+                onClick={(e) => e.stopPropagation()}
+                key={processLightboxIndex}
+              />
+            </picture>
+          </div>
+        )}
       </section>
 
       {/* 3. CORE BROCHURE FEATURE GRID */}
@@ -1010,7 +1379,7 @@ export default function App() {
               </div>
               <h3 className="font-display font-bold text-sm text-brand-brown-dark">Специалисты центра</h3>
               <p className="text-xs text-brand-brown-light">
-                В нашей дружной команде: опытный детский психолог, нейропсихолог, профессиональный логопед и уютная няня для малышей.
+                В нашей дружной команде: опытный детский психолог, нейропсихолог, профессиональный логопед и профессиональные репетиторы по всем предметам.
               </p>
             </div>
 
@@ -1018,261 +1387,75 @@ export default function App() {
         </div>
       </section>
 
-      {/* 4. SERVICES & PRICES WITH FILTER SYSTEM */}
-      <section className="py-16 bg-brand-mint-pale/20 relative" id="services">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
-          <div className="text-center max-w-3xl mx-auto mb-12">
-            <span className="text-brand-sage font-bold text-xs uppercase tracking-widest bg-brand-mint-light px-3 py-1 rounded-full">Каталог занятий</span>
-            <h2 className="font-display font-black text-3xl text-brand-teal mt-2">Услуги, программы и <span className="text-brand-amber">честные цены</span></h2>
-            <p className="text-sm text-brand-brown-light mt-2 italic">
-              Выберите нужный предмет, класс ребёнка или удобный формат занятий для быстрого подбора.
-            </p>
+      {/* 3.5 АКЦИИ */}
+      <section className="py-12 bg-brand-mint-pale/30 border-t border-brand-mint-pale" id="promos">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-2xl mx-auto mb-8">
+            <span className="text-brand-amber font-bold text-xs uppercase tracking-widest bg-brand-gold/20 px-3 py-1 rounded-full">Акции и спецпредложения</span>
+            <h2 className="font-display font-black text-2xl sm:text-3xl text-brand-brown-dark mt-2">
+              Выгодные условия <span className="text-brand-teal">для ваших детей</span>
+            </h2>
           </div>
 
-          {/* SEARCH & FILTERS CONTROLS */}
-          <div className="bg-brand-cream p-6 rounded-3xl border border-brand-sage/10 shadow-lamp space-y-6 mb-10">
-            
-            {/* Search Input bar */}
-            <div className="relative">
-              <Search className="absolute left-3.5 top-3.5 w-5 h-5 text-brand-sage" />
-              <input 
-                type="text" 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Поиск нужного предмета или направления (например: физика, логопед, ОГЭ...)"
-                className="w-full pl-11 pr-4 py-3 bg-brand-cream border border-brand-sage/20 rounded-2xl text-brand-brown-dark placeholder:text-brand-brown-light/50 focus:outline-none focus:border-brand-teal transition-all"
-              />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Акция 1 — пробный урок в подарок */}
+            <div className="bg-gradient-to-br from-brand-teal/5 to-brand-teal/10 rounded-3xl border border-brand-teal/15 p-6 shadow-lamp flex flex-col items-center text-center space-y-4 hover:-translate-y-1 transition-transform duration-300">
+              <div className="w-14 h-14 rounded-2xl bg-brand-teal/15 flex items-center justify-center text-3xl">
+                🎁
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-display font-black text-lg text-brand-teal">Пробный урок в подарок</h3>
+                <p className="text-sm text-brand-brown-light leading-relaxed">
+                  Для учеников, пришедших по рекомендации друзей и знакомых. Познакомимся, определим уровень и подберём программу без оплаты.
+                </p>
+              </div>
+              <a href="#booking_section" className="text-xs font-bold text-brand-teal hover:text-brand-amber transition-colors flex items-center gap-1 mt-auto pt-2">
+                Записаться <ChevronRight className="w-3.5 h-3.5" />
+              </a>
             </div>
 
-            {/* Filters Row */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
-              
-              {/* Category Filter */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-brand-brown-dark uppercase tracking-wider flex items-center gap-1.5">
-                  <BookOpen className="w-3.5 h-3.5 text-brand-teal" /> Предметное направление
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { id: 'all', label: 'Все' },
-                    { id: 'math', label: 'Математика' },
-                    { id: 'russian', label: 'Русский язык' },
-                    { id: 'english', label: 'Английский' },
-                    { id: 'physics', label: 'Физика' },
-                    { id: 'chemistry', label: 'Химия' },
-                    { id: 'history', label: 'История' },
-                    { id: 'social', label: 'Обществознание' },
-                    { id: 'development', label: 'Развитие / Творчество' }
-                  ].map(cat => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setSelectedCategory(cat.id)}
-                      className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all ${
-                        selectedCategory === cat.id 
-                          ? 'bg-brand-teal text-brand-cream shadow-sm' 
-                          : 'bg-brand-mint-pale/40 text-brand-brown-dark hover:bg-brand-mint-light'
-                      }`}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
-                </div>
+            {/* Акция 2 — скидка 10% на 4 занятия */}
+            <div className="bg-gradient-to-br from-brand-amber/5 to-brand-amber/10 rounded-3xl border border-brand-amber/15 p-6 shadow-lamp flex flex-col items-center text-center space-y-4 hover:-translate-y-1 transition-transform duration-300">
+              <div className="w-14 h-14 rounded-2xl bg-brand-amber/15 flex items-center justify-center text-3xl">
+                💰
               </div>
-
-              {/* Grade Filter */}
               <div className="space-y-2">
-                <label className="text-xs font-bold text-brand-brown-dark uppercase tracking-wider flex items-center gap-1.5">
-                  <GraduationCap className="w-3.5 h-3.5 text-brand-teal" /> Возраст / Класс
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { id: 'all', label: 'Все возрасты' },
-                    { id: 'preschool', label: 'Дошкольники' },
-                    { id: '1-4', label: '1–4 классы' },
-                    { id: '5-8', label: '5–8 классы' },
-                    { id: '9-11', label: '9–11 классы' },
-                    { id: 'oge', label: 'ОГЭ (9 кл.)' },
-                    { id: 'ege', label: 'ЕГЭ (11 кл.)' }
-                  ].map(grade => (
-                    <button
-                      key={grade.id}
-                      onClick={() => setSelectedGrade(grade.id)}
-                      className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all ${
-                        selectedGrade === grade.id 
-                          ? 'bg-brand-amber text-brand-cream shadow-sm' 
-                          : 'bg-brand-mint-pale/40 text-brand-brown-dark hover:bg-brand-mint-light'
-                      }`}
-                    >
-                      {grade.label}
-                    </button>
-                  ))}
-                </div>
+                <h3 className="font-display font-black text-lg text-brand-amber">Скидка 10% на абонемент</h3>
+                <p className="text-sm text-brand-brown-light leading-relaxed">
+                  При единовременной оплате от 4 занятий — фиксированная скидка 10%. Действует на все предметы и направления центра.
+                </p>
               </div>
-
-              {/* Format Filter */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-brand-brown-dark uppercase tracking-wider flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-brand-teal" /> Формат обучения
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    { id: 'all', label: 'Любой формат' },
-                    { id: 'individual', label: 'Индивидуально' },
-                    { id: 'group', label: 'В мини-группах' },
-                    { id: 'online', label: 'Дистанционно (Онлайн)' }
-                  ].map(format => (
-                    <button
-                      key={format.id}
-                      onClick={() => setSelectedFormat(format.id)}
-                      className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all ${
-                        selectedFormat === format.id 
-                          ? 'bg-brand-sage text-brand-cream shadow-sm' 
-                          : 'bg-brand-mint-pale/40 text-brand-brown-dark hover:bg-brand-mint-light'
-                      }`}
-                    >
-                      {format.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
+              <a href="#booking_section" className="text-xs font-bold text-brand-amber hover:text-brand-brown-dark transition-colors flex items-center gap-1 mt-auto pt-2">
+                Записаться <ChevronRight className="w-3.5 h-3.5" />
+              </a>
             </div>
 
-            {/* Clear Filters indicator */}
-            {(selectedCategory !== 'all' || selectedGrade !== 'all' || selectedFormat !== 'all' || searchQuery) && (
-              <div className="flex justify-end pt-2 border-t border-brand-sage/5">
-                <button 
-                  onClick={() => {
-                    setSelectedCategory('all');
-                    setSelectedGrade('all');
-                    setSelectedFormat('all');
-                    setSearchQuery('');
-                  }}
-                  className="text-xs font-bold text-brand-amber hover:text-brand-brown-dark flex items-center gap-1"
-                >
-                  <X className="w-3.5 h-3.5" /> Сбросить все фильтры
-                </button>
+            {/* Акция 3 — скидка за рекомендацию */}
+            <div className="bg-gradient-to-br from-brand-mint-pale to-brand-mint-light/40 rounded-3xl border border-brand-sage/15 p-6 shadow-lamp flex flex-col items-center text-center space-y-4 hover:-translate-y-1 transition-transform duration-300">
+              <div className="w-14 h-14 rounded-2xl bg-brand-sage/15 flex items-center justify-center text-3xl">
+                🤝
               </div>
-            )}
-
+              <div className="space-y-2">
+                <h3 className="font-display font-black text-lg text-brand-brown-dark">Приведи друга — получи скидку</h3>
+                <p className="text-sm text-brand-brown-light leading-relaxed">
+                  Порекомендовали нас знакомым — получаете скидку 10% на следующие 4 занятия. Друзьям тоже подарок!
+                </p>
+              </div>
+              <a href="#booking_section" className="text-xs font-bold text-brand-brown-dark hover:text-brand-teal transition-colors flex items-center gap-1 mt-auto pt-2">
+                Записаться <ChevronRight className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
 
-          {/* DYNAMIC CARD GRID */}
-          {filteredServices.length === 0 ? (
-            <div className="text-center py-16 bg-brand-cream rounded-3xl border border-brand-sage/10 shadow-lamp max-w-lg mx-auto">
-              <Search className="w-12 h-12 text-brand-sage/60 mx-auto mb-3" />
-              <p className="font-bold text-brand-brown-dark">Ничего не найдено</p>
-              <p className="text-xs text-brand-brown-light mt-1">Попробуйте изменить поисковый запрос или сбросить фильтры.</p>
-              <button 
-                onClick={() => {
-                  setSelectedCategory('all');
-                  setSelectedGrade('all');
-                  setSelectedFormat('all');
-                  setSearchQuery('');
-                }}
-                className="mt-4 bg-brand-teal text-brand-cream font-bold px-4 py-2 rounded-xl text-xs"
-              >
-                Показать все занятия
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredServices.map((service) => (
-                <div 
-                  key={service.id} 
-                  className="bg-brand-cream rounded-3xl border border-brand-sage/10 shadow-lamp hover:shadow-lamp-lg transition-all duration-300 flex flex-col justify-between overflow-hidden group"
-                  id={`service_card_${service.id}`}
-                >
-                  
-                  {/* Card Content Top */}
-                  <div className="p-6 sm:p-8 space-y-4">
-                    
-                    {/* Header: Title & Icon badge */}
-                    <div className="flex justify-between items-start gap-4">
-                      <h3 className="font-display font-bold text-lg text-brand-brown-dark leading-snug group-hover:text-brand-teal transition-colors">
-                        {service.name}
-                      </h3>
-                      <div className="p-2.5 bg-brand-mint-pale rounded-2xl text-brand-teal flex-shrink-0">
-                        {service.icon === 'Calculator' && <Calculator className="w-5 h-5" />}
-                        {service.icon === 'BookOpen' && <BookOpen className="w-5 h-5" />}
-                        {service.icon === 'Percent' && <Percent className="w-5 h-5" />}
-                        {service.icon === 'PenTool' && <PenTool className="w-5 h-5" />}
-                        {service.icon === 'GraduationCap' && <GraduationCap className="w-5 h-5" />}
-                        {service.icon === 'Bookmark' && <Bookmark className="w-5 h-5" />}
-                        {service.icon === 'Award' && <Award className="w-5 h-5" />}
-                        {service.icon === 'FlaskConical' && <FlaskConical className="w-5 h-5" />}
-                        {service.icon === 'Baby' && <Baby className="w-5 h-5" />}
-                        {service.icon === 'Languages' && <Languages className="w-5 h-5" />}
-                        {service.icon === 'Compass' && <Compass className="w-5 h-5" />}
-                        {service.icon === 'Globe' && <Globe className="w-5 h-5" />}
-                        {service.icon === 'Library' && <Library className="w-5 h-5" />}
-                        {service.icon === 'Scroll' && <Scroll className="w-5 h-5" />}
-                        {service.icon === 'Box' && <Box className="w-5 h-5" />}
-                        {service.icon === 'BrainCircuit' && <BrainCircuit className="w-5 h-5" />}
-                        {service.icon === 'Smile' && <Smile className="w-5 h-5" />}
-                        {service.icon === 'HeartHandshake' && <HeartHandshake className="w-5 h-5" />}
-                        {service.icon === 'Backpack' && <Backpack className="w-5 h-5" />}
-                        {service.icon === 'Clock' && <Clock className="w-5 h-5" />}
-                      </div>
-                    </div>
-
-                    {/* Subtitle / Details description */}
-                    <p className="text-xs sm:text-sm text-brand-brown-light leading-relaxed">
-                      {service.description}
-                    </p>
-
-                    {/* Age / Grade badges */}
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {service.grades.map((g, i) => (
-                        <span key={i} className="bg-brand-mint-pale text-brand-teal font-extrabold px-2.5 py-0.5 rounded-full text-[10px] tracking-wide uppercase">
-                          {g === 'preschool' ? 'Дошкольники' : `${g} классы`}
-                        </span>
-                      ))}
-                    </div>
-
-                    {/* Interactive Price Matrix / Table */}
-                    <div className="pt-4 border-t border-brand-sage/5 space-y-2">
-                      <span className="text-xs font-bold text-brand-brown-dark block uppercase tracking-wider">Варианты стоимости:</span>
-                      
-                      <div className="space-y-1.5">
-                        {service.formats.map((fmt, i) => (
-                          <div key={i} className="flex justify-between items-center bg-brand-cream/60 hover:bg-brand-mint-pale/30 px-3 py-2 rounded-xl border border-brand-sage/5 text-xs transition-all">
-                            <span className="font-semibold text-brand-brown-dark">{fmt.name}</span>
-                            <div className="text-right">
-                              <span className="font-bold text-brand-teal font-mono text-sm">{fmt.price}</span>
-                              {fmt.details && <span className="text-[9px] text-brand-brown-light block font-medium">{fmt.details}</span>}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {service.details && (
-                        <div className="text-[11px] font-bold text-brand-amber bg-amber-50/50 p-2.5 rounded-xl border border-brand-amber/10 text-center">
-                          💡 {service.details}
-                        </div>
-                      )}
-                    </div>
-
-                  </div>
-
-                  {/* Card Actions Bottom */}
-                  <div className="p-6 bg-brand-mint-pale/30 border-t border-brand-sage/10">
-                    <button
-                      onClick={() => handleBookNow(service.name, `Запись на курс: "${service.name}"`)}
-                      className="w-full bg-brand-teal hover:bg-brand-sage text-brand-cream font-bold py-3 px-4 rounded-xl shadow-lamp transition-all text-xs uppercase tracking-wider"
-                    >
-                      Подобрать группу / Записаться
-                    </button>
-                  </div>
-
-                </div>
-              ))}
-            </div>
-          )}
-
+          {/* Нижняя плашка — уточнение */}
+          <p className="text-center text-[10px] text-brand-brown-light/50 mt-6">
+            Акции суммируются при выполнении условий. Подробности у администратора центра.
+          </p>
         </div>
       </section>
+
+      {/* 4. SERVICES: INTERACTIVE CATALOG FILTER */}
+      <CatalogFilter teachers={teachers} onBookNow={handleBookNow} />
 
       {/* 5. TEACHERS & TEAM POPUPS */}
       <section className="py-16 bg-brand-cream relative" id="teachers">
@@ -1286,85 +1469,170 @@ export default function App() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            {teachers.map((t) => (
-              <div 
-                key={t.id}
-                onClick={() => setActiveTeacher(t)}
-                className="bg-brand-cream rounded-3xl border border-brand-sage/10 p-6 shadow-lamp hover:shadow-lamp-lg transition-all duration-300 cursor-pointer group flex flex-col justify-between"
-                id={`teacher_card_${t.id}`}
-              >
-                <div className="space-y-4">
-                  {/* Teacher Illustration Portrait */}
-                  <div className="flex justify-center">
-                    <div className="relative group-hover:scale-105 transition-transform duration-300">
-                      {/* Decorative backdrop glow */}
-                      <div className="absolute inset-0 bg-brand-teal/5 rounded-full filter blur-md -z-10"></div>
-                      <TeacherAvatar teacher={t} className="w-24 h-24 flex-shrink-0" />
+          <div className="relative">
+            {/* Стрелки навигации -- только рабочая */}
+            {shuffledTeachers.length > 6 && (
+              <>
+                {teacherCanScrollLeft && (
+                  <button
+                    onClick={() => scrollTeachersBy('left')}
+                    className="absolute left-0 top-1/2 -translate-y-1/2 -ml-3 z-10 p-2 bg-brand-cream rounded-full shadow-lamp border border-brand-sage/20 text-brand-teal hover:bg-brand-mint-pale transition-all hidden sm:block"
+                    aria-label="Предыдущие педагоги"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                )}
+                {teacherCanScrollRight && (
+                  <button
+                    onClick={() => scrollTeachersBy('right')}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 -mr-3 z-10 p-2 bg-brand-cream rounded-full shadow-lamp border border-brand-sage/20 text-brand-teal hover:bg-brand-mint-pale transition-all hidden sm:block"
+                    aria-label="Следующие педагоги"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* Карточки педагогов -- двухрядный горизонтальный скролл */}
+            <div
+              ref={teacherSliderRef}
+              onScroll={() => {
+                const el = teacherSliderRef.current;
+                if (!el) return;
+                const card = el.querySelector('.teacher-slide-card') as HTMLElement;
+                if (!card) return;
+                const cardW = card.offsetWidth + 24;
+                const step = cardsPerView();
+                const maxScroll = el.scrollWidth - el.clientWidth;
+                // колонок (2 учителя в колонке) = сколько раз по 2 помещается
+                const columns = Math.ceil(shuffledTeachers.length / 2);
+                const dotsCount = Math.ceil(columns / step);
+                let idx = Math.round(el.scrollLeft / (cardW * step));
+                // зажать в пределах и докрутить последнюю точку
+                if (el.scrollLeft >= maxScroll - 2) idx = dotsCount - 1;
+                idx = Math.max(0, Math.min(idx, dotsCount - 1));
+                setTeacherScrollIdx(idx);
+                setTeacherCanScrollLeft(el.scrollLeft > 8);
+                setTeacherCanScrollRight(el.scrollLeft < maxScroll - 8);
+              }}
+              className="grid grid-flow-col auto-cols-[calc(100vw-2rem)] sm:auto-cols-[calc(50%-12px)] lg:auto-cols-[calc(33.333%-16px)] grid-rows-2 gap-6 overflow-x-auto scroll-smooth pb-2 scrollbar-none snap-x snap-mandatory -mx-4 px-4 sm:mx-0 sm:px-0 scroll-pl-4 sm:scroll-pl-0"
+            >
+              {shuffledTeachers.map((t) => (
+                <div
+                  key={t.id}
+                  onClick={() => setActiveTeacher(t)}
+                  className="teacher-slide-card bg-brand-cream rounded-3xl border border-brand-sage/10 p-5 shadow-lamp hover:shadow-lamp-lg transition-all duration-300 cursor-pointer group flex flex-col justify-between snap-start"
+                  id={`teacher_card_${t.id}`}
+                >
+                  <div className="space-y-3">
+                    <div className="flex justify-center">
+                      <div className="relative group-hover:scale-105 transition-transform duration-300">
+                        <div className="absolute inset-0 bg-brand-teal/5 rounded-full filter blur-md -z-10"></div>
+                        <TeacherAvatar teacher={t} className="w-20 h-20 flex-shrink-0" />
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Teacher Basic Info */}
-                  <div className="text-center space-y-1">
-                    <h3 className="font-display font-bold text-base text-brand-brown-dark group-hover:text-brand-teal transition-colors">
-                      {t.name}
-                    </h3>
-                    <div className="text-xs font-semibold text-brand-amber">
-                      {t.experience}
+                    <div className="text-center space-y-0.5">
+                      <h3 className="font-display font-bold text-sm text-brand-brown-dark group-hover:text-brand-teal transition-colors">
+                        {t.name}
+                      </h3>
+                      <div className="text-[11px] font-semibold text-brand-amber">
+                        {t.experience}
+                      </div>
                     </div>
+
+                    <div className="flex flex-wrap justify-center gap-1">
+                      {t.subjects.map((sub, i) => (
+                        <span key={i} className="bg-brand-mint-pale text-brand-teal font-extrabold px-1.5 py-0.5 rounded text-[10px] tracking-wide uppercase">
+                          {sub}
+                        </span>
+                      ))}
+                    </div>
+
+                    <p className="text-[11px] text-brand-brown-light leading-relaxed text-center line-clamp-2">
+                      {t.bio}
+                    </p>
                   </div>
 
-                  {/* Badges of subjects */}
-                  <div className="flex flex-wrap justify-center gap-1">
-                    {t.subjects.map((sub, i) => (
-                      <span key={i} className="bg-brand-mint-pale text-brand-teal font-extrabold px-2 py-0.5 rounded text-[10px] tracking-wide uppercase">
-                        {sub}
-                      </span>
-                    ))}
+                  <div className="pt-3 mt-3 border-t border-brand-sage/5 flex justify-center">
+                    <span className="text-[11px] font-bold text-brand-teal group-hover:text-brand-amber transition-colors flex items-center gap-1">
+                      Подробнее <ChevronRight className="w-3 h-3" />
+                    </span>
                   </div>
-
-                  {/* Short description clamp */}
-                  <p className="text-xs text-brand-brown-light leading-relaxed text-center line-clamp-3">
-                    {t.bio}
-                  </p>
                 </div>
+              ))}
+            </div>
 
-                <div className="pt-4 mt-4 border-t border-brand-sage/5 flex justify-center">
-                  <span className="text-xs font-bold text-brand-teal group-hover:text-brand-amber transition-colors flex items-center gap-1">
-                    Подробнее о педагоге <ChevronRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
-              </div>
-            ))}
+            {/* Точки-индикаторы */}
+            <div className="flex justify-center gap-1.5 mt-4">
+              {Array.from({ length: Math.ceil(Math.ceil(shuffledTeachers.length / 2) / cardsPerView()) }).map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    const el = teacherSliderRef.current;
+                    if (!el) return;
+                    const card = el.querySelector('.teacher-slide-card') as HTMLElement;
+                    if (!card) return;
+                    const cardW = card.offsetWidth + 24;
+                    const step = cardsPerView();
+                    const maxScroll = el.scrollWidth - el.clientWidth;
+                    el.scrollTo({ left: Math.min(cardW * step * i, maxScroll), behavior: 'smooth' });
+                  }}
+                  className={`h-1.5 rounded-full transition-all ${i === teacherScrollIdx ? 'bg-brand-teal w-4' : 'bg-brand-sage/30 hover:bg-brand-sage/50 w-1.5'}`}
+                  aria-label={`Педагоги ${i + 1}`}
+                />
+              ))}
+            </div>
           </div>
 
         </div>
 
         {/* TEACHER BIO POPUP MODAL */}
         {activeTeacher && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-brown-dark/50 backdrop-blur-sm" id="teacher_popup_modal">
-            <div className="bg-brand-cream rounded-3xl max-w-2xl w-full border border-brand-sage/20 shadow-lamp-lg overflow-hidden relative animate-in fade-in zoom-in duration-300">
-              
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-brown-dark/50 backdrop-blur-sm" id="teacher_popup_modal" onClick={() => setActiveTeacher(null)} onWheel={(e) => e.stopPropagation()} style={{ overscrollBehavior: 'contain' }}>
+            <div className="bg-brand-cream rounded-3xl max-w-2xl w-full max-h-[90vh] border border-brand-sage/20 shadow-lamp-lg overflow-hidden relative animate-in fade-in zoom-in duration-300 flex flex-col" onClick={(e) => e.stopPropagation()}>
+
               {/* Close Button */}
-              <button 
+              <button
                 onClick={() => setActiveTeacher(null)}
-                className="absolute top-4 right-4 p-2 text-brand-brown-dark/60 hover:text-brand-brown-dark hover:bg-brand-mint-pale rounded-full transition-all"
+                className="absolute top-4 right-4 z-10 p-3 text-brand-brown-dark/60 hover:text-brand-brown-dark hover:bg-brand-mint-pale rounded-full transition-all"
                 id="close_teacher_popup"
               >
                 <X className="w-5 h-5" />
               </button>
 
-              <div className="p-6 sm:p-8 space-y-6">
+              <div className="p-6 sm:p-8 space-y-6 overflow-y-auto flex-1">
                 
-                {/* Header Row: Photo + Name */}
-                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-                  <TeacherAvatar teacher={activeTeacher} className="w-24 h-24 flex-shrink-0" />
-                  <div className="text-center sm:text-left space-y-2">
+                {/* Header: Large rectangular photo + Name */}
+                <div className="flex flex-col items-center gap-5">
+                  <button
+                    onClick={() => setBigPhotoUrl(activeTeacher.photoUrl)}
+                    className="relative w-40 h-52 sm:w-56 sm:h-72 rounded-2xl overflow-hidden shadow-lamp border-2 border-brand-mint-pale cursor-pointer group"
+                  >
+                    <img
+                      src={activeTeacher.photoUrl}
+                      alt={activeTeacher.name}
+                      width="400"
+                      height="533"
+                      loading="lazy"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        // Скрываем битую картинку -- TeacherAvatar отрисуется ниже как фолбэк
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                    {/* Иконка лупы */}
+                    <div className="absolute inset-0 hover:bg-black/10 transition-colors flex items-center justify-center">
+                      <svg className="w-8 h-8 text-white opacity-0 hover:opacity-80 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    </div>
+                  </button>
+                  <div className="text-center space-y-1">
                     <span className="text-brand-amber font-bold text-xs uppercase tracking-widest">{activeTeacher.experience}</span>
                     <h3 className="font-display font-black text-xl sm:text-2xl text-brand-brown-dark">
                       {activeTeacher.name}
                     </h3>
-                    <div className="flex flex-wrap justify-center sm:justify-start gap-1">
+                    <div className="flex flex-wrap justify-center gap-1">
                       {activeTeacher.subjects.map((sub, i) => (
                         <span key={i} className="bg-brand-mint-pale text-brand-teal font-extrabold px-2.5 py-0.5 rounded-full text-[10px] uppercase">
                           {sub}
@@ -1387,23 +1655,23 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Footer Buttons */}
-                <div className="pt-4 border-t border-brand-sage/5 flex flex-col sm:flex-row gap-3">
-                  <button
-                    onClick={() => handleBookNow(activeTeacher.subjects[0], `Запись к преподавателю: ${activeTeacher.name}`)}
-                    className="w-full sm:w-1/2 bg-brand-teal hover:bg-brand-sage text-brand-cream font-bold py-3 px-4 rounded-xl transition-all text-xs uppercase tracking-wider"
-                  >
-                    Записаться к педагогу
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTeacher(null)}
-                    className="w-full sm:w-1/2 border border-brand-sage/30 hover:bg-brand-mint-pale/40 text-brand-brown-dark font-bold py-3 px-4 rounded-xl transition-all text-xs uppercase tracking-wider"
-                  >
-                    Вернуться к списку
-                  </button>
-                </div>
+              </div>{/* конец скроллящейся области */}
 
+              {/* Footer Buttons -- sticky, вне скролла */}
+              <div className="p-6 sm:px-8 pt-4 border-t border-brand-sage/5 flex flex-col sm:flex-row gap-3 flex-shrink-0 bg-brand-cream rounded-b-3xl">
+                <button
+                  onClick={() => handleBookNow(activeTeacher.subjects[0], `Запись к преподавателю: ${activeTeacher.name}`)}
+                  className="w-full sm:w-1/2 bg-brand-teal hover:bg-brand-sage text-brand-cream font-bold py-3 px-4 rounded-xl transition-all text-xs uppercase tracking-wider"
+                >
+                  Записаться к педагогу
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTeacher(null)}
+                  className="w-full sm:w-1/2 border border-brand-sage/30 hover:bg-brand-mint-pale/40 text-brand-brown-dark font-bold py-3 px-4 rounded-xl transition-all text-xs uppercase tracking-wider"
+                >
+                  Вернуться к списку
+                </button>
               </div>
 
             </div>
@@ -1412,46 +1680,489 @@ export default function App() {
 
       </section>
 
-      {/* 6. REVIEWS CAROUSEL WITH LOCALPersist */}
-      <section className="py-16 bg-brand-mint-pale/30 relative border-t border-b border-brand-mint-pale" id="reviews">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-            
-            {/* Left side: Header, rating, Yandex widget clone */}
-            <div className="lg:col-span-4 space-y-6 text-center lg:text-left">
-              <span className="text-brand-sage font-bold text-xs uppercase tracking-widest bg-brand-mint-light px-3 py-1 rounded-full">Родители говорят о нас</span>
-              <h2 className="font-display font-black text-3xl text-brand-teal">Отзывы семей <span className="text-brand-amber">в станице Северской</span></h2>
-              <p className="text-sm text-brand-brown-light leading-relaxed">
-                Доверие родителей — наша главная опора. Мы делаем всё, чтобы учёба приносила радость детям и спокойствие мамам.
-              </p>
+      {/* 5.5. FOUNDER SECTION */}
+      <section className="py-16 bg-brand-cream relative border-t border-brand-mint-pale" id="founder">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
 
-              {/* MOCK YANDEX REVIEWS WIDGET */}
-              <div className="bg-brand-cream p-4 rounded-2xl border border-brand-sage/10 shadow-lamp inline-block max-w-[280px] text-left">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-bold text-brand-brown-dark">Рейтинг Яндекс.Карт</span>
-                  <span className="bg-[#FFCC00]/20 text-[#D49B00] px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider">5.0 ★</span>
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <span className="text-brand-amber font-bold text-xs uppercase tracking-widest bg-brand-gold/20 px-3 py-1 rounded-full">Основатель центра</span>
+            <h2 className="font-display font-black text-2xl sm:text-3xl text-brand-brown-dark mt-2">
+              Как я не любила детей и стала учительницей? 🤓
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+
+            {/* Photo -- вертикальное, крупнее, кликабельно */}
+            <div className="lg:col-span-5 flex justify-center lg:justify-end">
+              <button
+                onClick={() => setBigPhotoUrl('/assets/photos/shumkinadirector.jpg')}
+                className="relative w-80 sm:w-[28rem] lg:w-[50rem] rounded-3xl overflow-hidden shadow-lamp border-4 border-brand-cream cursor-pointer hover:shadow-lg transition-shadow"
+                style={{ aspectRatio: '3/4' }}
+              >
+                <picture>
+                  <source srcSet="/assets/photos/shumkinadirector.webp" type="image/webp" />
+                  <img
+                    src="/assets/photos/shumkinadirector.jpg"
+                    alt="Надежда Шумкина — основатель образовательного центра Опора"
+                    width="1200"
+                    height="1600"
+                    loading="lazy"
+                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+                  />
+                </picture>
+                {/* Иконка лупы при наведении */}
+                <div className="absolute inset-0 hover:bg-black/10 transition-colors flex items-center justify-center">
+                  <svg className="w-10 h-10 text-white opacity-0 hover:opacity-80 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                 </div>
-                <div className="flex items-center gap-0.5 text-[#FFCC00]">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star key={i} className="w-4 h-4 fill-current" />
-                  ))}
-                </div>
-                <div className="text-[10.5px] text-brand-brown-light mt-1.5 font-medium">
-                  100% положительных оценок жителей Северского района.
-                </div>
-                <a 
-                  href="https://yandex.ru/maps" 
-                  target="_blank" 
-                  rel="noreferrer" 
-                  className="text-[10px] font-bold text-brand-teal hover:text-brand-amber transition-colors inline-flex items-center gap-0.5 mt-2"
+              </button>
+            </div>
+
+            {/* Text */}
+            <div className="lg:col-span-7 space-y-5 text-brand-brown-dark">
+              <div className="space-y-4 leading-relaxed">
+                <p className="text-lg font-medium text-brand-teal">
+                  Рада приветствовать вас! Меня зовут <strong>Надежда Шумкина</strong>. Я мама троих детей, педагог и создатель этого образовательного пространства.
+                </p>
+
+                <p>
+                  Если бы до 25 лет мне сказали, что я открою свою школу, я бы сильно удивилась. Я была абсолютно уверена, что дети — это не моё, строила карьеру в журналистике, жила исключительно для себя и ни в чём себе не отказывала.
+                </p>
+
+                <p>
+                  Всё перевернулось с рождением первого ребёнка. Это была глубокая личная трансформация, через сложности и вызовы, которая полностью изменила мои приоритеты. Я начала преподавать, и со временем поняла, что именно это даёт мне самую большую радость и опору.
+                </p>
+
+                <p>
+                  Я оставила руководящие должности в маркетинге и медиа, получила профессиональное педагогическое образование и с головой ушла в изучение детской психологии и нейропсихологии.
+                </p>
+
+                <p>
+                  Сегодня я счастлива открыть двери нашего центра. Это моя сбывшаяся мечта. Я собрала здесь сильную и опытную команду преподавателей — тех самых профессионалов, которым я уже не первый год доверяю обучение собственных детей.
+                </p>
+
+                <p className="text-brand-teal font-medium">
+                  Мы создали место, где академические знания передаются с любовью, а развитие ребёнка происходит в атмосфере искренней поддержки и радости.
+                </p>
+
+                <p className="font-display font-bold text-lg text-brand-amber">
+                  Добро пожаловать!
+                </p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* 5.7. INTERIOR GALLERY */}
+      <section className="py-16 bg-brand-mint-pale/30 relative border-t border-brand-mint-pale" id="interior">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <span className="text-brand-amber font-bold text-xs uppercase tracking-widest bg-brand-gold/20 px-3 py-1 rounded-full">Уют и атмосфера</span>
+            <h2 className="font-display font-black text-2xl sm:text-3xl text-brand-brown-dark mt-2">
+              Наш центр <span className="text-brand-teal">в фотографиях</span>
+            </h2>
+            <p className="text-sm text-brand-brown-light mt-2 italic">
+              Светлые кабинеты, удобные зоны ожидания для родителей и атмосфера, в которой хочется учиться.
+            </p>
+          </div>
+
+          <div className="relative">
+            {/* Стрелки навигации -- только рабочая */}
+            {INTERIOR_PHOTOS.length > 3 && (
+              <>
+                {interiorScrollIdx > 0 && (
+                  <button
+                    onClick={() => scrollInteriorBy('left')}
+                    className="absolute left-0 top-1/2 -translate-y-1/2 -ml-3 z-10 p-2 bg-brand-cream rounded-full shadow-lamp border border-brand-sage/20 text-brand-teal hover:bg-brand-mint-pale transition-all hidden sm:block"
+                    aria-label="Предыдущие фото"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                )}
+                {interiorScrollIdx < Math.ceil(INTERIOR_PHOTOS.length / cardsPerView()) - 1 && (
+                  <button
+                    onClick={() => scrollInteriorBy('right')}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 -mr-3 z-10 p-2 bg-brand-cream rounded-full shadow-lamp border border-brand-sage/20 text-brand-teal hover:bg-brand-mint-pale transition-all hidden sm:block"
+                    aria-label="Следующие фото"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* Горизонтальный скролл с фото */}
+            <div
+              ref={interiorSliderRef}
+              onScroll={() => {
+                const el = interiorSliderRef.current;
+                if (!el) return;
+                const card = el.querySelector('.interior-slide-card') as HTMLElement;
+                if (!card) return;
+                const cardW = card.offsetWidth + 16;
+                const step = cardsPerView();
+                const maxScroll = el.scrollWidth - el.clientWidth;
+                const dotsCount = Math.ceil(INTERIOR_PHOTOS.length / step);
+                let idx = Math.round(el.scrollLeft / (cardW * step));
+                if (el.scrollLeft >= maxScroll - 2) idx = dotsCount - 1;
+                idx = Math.max(0, Math.min(idx, dotsCount - 1));
+                setInteriorScrollIdx(idx);
+              }}
+              className="flex gap-4 overflow-x-auto scroll-smooth pb-2 scrollbar-none snap-x snap-mandatory -mx-4 px-4 sm:px-0 sm:mx-0 scroll-pl-4 sm:scroll-pl-0"
+            >
+              {INTERIOR_PHOTOS.map((name, idx) => (
+                <button
+                  key={name}
+                  onClick={() => setLightboxIndex(idx)}
+                  className="interior-slide-card flex-shrink-0 w-[calc(100vw-2rem)] sm:w-[calc(33.333%-11px)] rounded-2xl overflow-hidden shadow-lamp border border-brand-sage/10 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 group snap-start"
                 >
-                  Смотреть на Яндекс.Картах <ExternalLink className="w-3 h-3" />
-                </a>
+                  <img
+                    src={`/assets/interior/${name}.jpg`}
+                    alt="Интерьер образовательного центра Опора"
+                    width="400"
+                    height="267"
+                    className="w-full h-56 sm:h-64 object-cover group-hover:scale-105 transition-transform duration-500"
+                    loading="lazy"
+                  />
+                </button>
+              ))}
+            </div>
+
+            {/* Точки-индикаторы */}
+            {INTERIOR_PHOTOS.length > 3 && (
+              <div className="flex justify-center gap-1.5 mt-6">
+                {Array.from({ length: Math.ceil(INTERIOR_PHOTOS.length / cardsPerView()) }).map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => {
+                      const el = interiorSliderRef.current;
+                      if (!el) return;
+                      const card = el.querySelector('.interior-slide-card') as HTMLElement;
+                      if (!card) return;
+                      const cardW = card.offsetWidth + 16;
+                      const maxScroll = el.scrollWidth - el.clientWidth;
+                      el.scrollTo({ left: Math.min(cardW * cardsPerView() * i, maxScroll), behavior: 'smooth' });
+                    }}
+                    className={`w-2 h-2 rounded-full transition-all ${i === interiorScrollIdx ? 'bg-brand-teal w-4' : 'bg-brand-sage/30 hover:bg-brand-sage/50'}`}
+                    aria-label={`Группа фото ${i + 1}`}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Подсказка для мобильных */}
+            <p className="text-center text-[10px] text-brand-brown-light/50 mt-3 sm:hidden">
+              ← Листайте, чтобы увидеть все фото →
+            </p>
+          </div>
+
+        </div>
+
+        {/* Лайтбокс с навигацией */}
+        {lightboxIndex !== null && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+            onClick={() => setLightboxIndex(null)}
+            onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; touchStartY.current = e.touches[0].clientY; }}
+            onTouchEnd={(e) => {
+              const dx = e.changedTouches[0].clientX - touchStartX.current;
+              const dy = e.changedTouches[0].clientY - touchStartY.current;
+              // Свайп вниз — закрыть
+              if (dy > 50 && Math.abs(dy) > Math.abs(dx)) { setLightboxIndex(null); return; }
+              if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return;
+              if (dx < 0 && lightboxIndex < INTERIOR_PHOTOS.length - 1) setLightboxIndex(lightboxIndex + 1);
+              if (dx > 0 && lightboxIndex > 0) setLightboxIndex(lightboxIndex - 1);
+            }}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setLightboxIndex(null)}
+              className="absolute top-4 right-4 z-10 p-3 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-all"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            {/* Left arrow */}
+            {lightboxIndex > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex - 1); }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-all"
+                aria-label="Предыдущее фото"
+              >
+                <ChevronLeft className="w-8 h-8" />
+              </button>
+            )}
+
+            {/* Right arrow */}
+            {lightboxIndex < INTERIOR_PHOTOS.length - 1 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex + 1); }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-all"
+                aria-label="Следующее фото"
+              >
+                <ChevronRight className="w-8 h-8" />
+              </button>
+            )}
+
+            {/* Photo counter */}
+            <span className="absolute top-4 left-4 z-10 text-white/60 text-sm font-mono pointer-events-none">
+              {lightboxIndex + 1} / {INTERIOR_PHOTOS.length}
+            </span>
+
+            {/* Фото: stopPropagation чтобы клик по нему не закрывал */}
+            <img
+              src={`/assets/interior/${INTERIOR_PHOTOS[lightboxIndex]}.jpg`}
+              alt={`Интерьер центра Опора — фото ${lightboxIndex + 1}`}
+              width="1400"
+              height="1050"
+              className="rounded-2xl shadow-2xl"
+              style={{ maxWidth: 'calc(100vw - 32px)', maxHeight: '90vh', width: 'auto', height: 'auto' }}
+              onClick={(e) => e.stopPropagation()}
+              key={lightboxIndex}
+            />
+          </div>
+        )}
+
+        {/* Лайтбокс для отдельного большого фото (основатель, фото препода) */}
+        {bigPhotoUrl && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+            onClick={() => setBigPhotoUrl(null)}
+          >
+            <button
+              onClick={() => setBigPhotoUrl(null)}
+              className="absolute top-4 right-4 z-10 p-3 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-all"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <picture>
+              <source srcSet={bigPhotoUrl.replace(/\.(jpg|jpeg|png)$/i, '.webp')} type="image/webp" />
+              <img
+                src={bigPhotoUrl}
+                alt="Фото"
+                width="1800"
+                height="1400"
+                className="rounded-2xl shadow-2xl"
+                style={{ maxWidth: 'calc(100vw - 32px)', maxHeight: '90vh', width: 'auto', height: 'auto' }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </picture>
+          </div>
+        )}
+
+        {/* Лайтбокс для скриншотов отзывов — листается как интерьеры */}
+        {reviewLightboxIndex !== null && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+            onClick={() => setReviewLightboxIndex(null)}
+            onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; touchStartY.current = e.touches[0].clientY; }}
+            onTouchEnd={(e) => {
+              const dx = e.changedTouches[0].clientX - touchStartX.current;
+              const dy = e.changedTouches[0].clientY - touchStartY.current;
+              // Свайп вниз — закрыть
+              if (dy > 50 && Math.abs(dy) > Math.abs(dx)) { setReviewLightboxIndex(null); return; }
+              if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return;
+              if (dx < 0 && reviewLightboxIndex < approvedReviews.length - 1) setReviewLightboxIndex(reviewLightboxIndex + 1);
+              if (dx > 0 && reviewLightboxIndex > 0) setReviewLightboxIndex(reviewLightboxIndex - 1);
+            }}
+          >
+            {/* Закрыть */}
+            <button
+              onClick={() => setReviewLightboxIndex(null)}
+              className="absolute top-4 right-4 z-10 p-3 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-all"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            {/* Предыдущий */}
+            {reviewLightboxIndex > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setReviewLightboxIndex(reviewLightboxIndex - 1); }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-10 p-3 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-all"
+                aria-label="Предыдущий отзыв"
+              >
+                <ChevronLeft className="w-8 h-8" />
+              </button>
+            )}
+
+            {/* Следующий */}
+            {reviewLightboxIndex < approvedReviews.length - 1 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setReviewLightboxIndex(reviewLightboxIndex + 1); }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 p-3 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-all"
+                aria-label="Следующий отзыв"
+              >
+                <ChevronRight className="w-8 h-8" />
+              </button>
+            )}
+
+            {/* Счётчик */}
+            <span className="absolute top-4 left-4 z-10 text-white/60 text-sm font-mono pointer-events-none">
+              {reviewLightboxIndex + 1} / {approvedReviews.length}
+            </span>
+
+            {/* Скриншот */}
+            <picture>
+              <source srcSet={approvedReviews[reviewLightboxIndex].screenshotUrl!.replace(/\.(jpg|jpeg|png)$/i, '.webp')} type="image/webp" />
+              <img
+                src={approvedReviews[reviewLightboxIndex].screenshotUrl}
+                alt="Результаты учеников образовательного центра Опора"
+                width="1206"
+                height="1280"
+                className="rounded-2xl shadow-2xl"
+                style={{ maxWidth: 'calc(100vw - 32px)', maxHeight: '90vh', width: 'auto', height: 'auto' }}
+                onClick={(e) => e.stopPropagation()}
+                key={reviewLightboxIndex}
+              />
+            </picture>
+          </div>
+        )}
+      </section>
+
+      {/* 6. REVIEWS CAROUSEL — скриншоты реальных отзывов */}
+      <section className="py-16 bg-brand-mint-pale/30 relative border-t border-b border-brand-mint-pale" id="reviews">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <span className="text-brand-sage font-bold text-xs uppercase tracking-widest bg-brand-mint-light px-3 py-1 rounded-full">Родители говорят о нас</span>
+            <h2 className="font-display font-black text-2xl sm:text-3xl text-brand-brown-dark mt-2">
+              Отзывы семей <span className="text-brand-teal">в станице Северской</span>
+            </h2>
+            <p className="text-sm text-brand-brown-light mt-2 italic">
+              Доверие родителей — наша главная опора. Мы делаем всё, чтобы учёба приносила радость детям и спокойствие мамам.
+            </p>
+            {/* Ссылка на Яндекс.Карты */}
+            <a
+              href="https://yandex.ru/navi/org/obrazovatelny_tsentr_opora/28677234672?si=qrzj1g9rguwa6pgpxqydhjtc74"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 mt-3 text-xs font-bold text-brand-teal hover:text-brand-amber transition-colors"
+            >
+              Смотреть все отзывы на Яндекс.Картах <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+
+          {approvedReviews.length === 0 ? (
+            <div className="text-center py-12 text-brand-brown-light italic">Отзывы загружаются...</div>
+          ) : (
+            <div className="relative">
+              {/* Стрелки навигации */}
+              {approvedReviews.length > 3 && (
+                <>
+                  {reviewScrollIdx > 0 && (
+                    <button
+                      onClick={() => {
+                        const el = reviewSliderRef.current;
+                        if (!el) return;
+                        const card = el.querySelector('.review-slide-card') as HTMLElement;
+                        if (!card) return;
+                        const cardW = card.offsetWidth + 16;
+                        el.scrollBy({ left: -cardW * cardsPerView(), behavior: 'smooth' });
+                      }}
+                      className="absolute left-0 top-1/2 -translate-y-1/2 -ml-3 z-10 p-2 bg-brand-cream rounded-full shadow-lamp border border-brand-sage/20 text-brand-teal hover:bg-brand-mint-pale transition-all hidden sm:block"
+                      aria-label="Предыдущие отзывы"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                  )}
+                  {reviewScrollIdx < Math.ceil(approvedReviews.length / cardsPerView()) - 1 && (
+                    <button
+                      onClick={() => {
+                        const el = reviewSliderRef.current;
+                        if (!el) return;
+                        const card = el.querySelector('.review-slide-card') as HTMLElement;
+                        if (!card) return;
+                        const cardW = card.offsetWidth + 16;
+                        el.scrollBy({ left: cardW * cardsPerView(), behavior: 'smooth' });
+                      }}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 -mr-3 z-10 p-2 bg-brand-cream rounded-full shadow-lamp border border-brand-sage/20 text-brand-teal hover:bg-brand-mint-pale transition-all hidden sm:block"
+                      aria-label="Следующие отзывы"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* Горизонтальный скролл со скриншотами */}
+              <div
+                ref={reviewSliderRef}
+                onScroll={() => {
+                  const el = reviewSliderRef.current;
+                  if (!el) return;
+                  const card = el.querySelector('.review-slide-card') as HTMLElement;
+                  if (!card) return;
+                  const cardW = card.offsetWidth + 16;
+                  const step = cardsPerView();
+                  const maxScroll = el.scrollWidth - el.clientWidth;
+                  const dotsCount = Math.ceil(approvedReviews.length / step);
+                  let idx = Math.round(el.scrollLeft / (cardW * step));
+                  if (el.scrollLeft >= maxScroll - 2) idx = dotsCount - 1;
+                  idx = Math.max(0, Math.min(idx, dotsCount - 1));
+                  setReviewScrollIdx(idx);
+                }}
+                className="flex gap-4 overflow-x-auto scroll-smooth pb-2 scrollbar-none snap-x snap-mandatory -mx-4 px-4 sm:px-0 sm:mx-0 scroll-pl-4 sm:scroll-pl-0"
+              >
+                {approvedReviews.map((rev, idx) => (
+                  <button
+                    key={rev.id}
+                    onClick={() => {
+                      if (rev.screenshotUrl) setReviewLightboxIndex(idx);
+                    }}
+                    className="review-slide-card flex-shrink-0 w-[calc(100vw-2rem)] sm:w-[calc(33.333%-11px)] snap-start group"
+                  >
+                    <div className="h-72 sm:h-80 rounded-2xl overflow-hidden shadow-lamp border border-brand-sage/10 bg-brand-mint-pale/20 relative flex items-center justify-center">
+                      <picture>
+                        <source srcSet={rev.screenshotUrl!.replace(/\.(jpg|jpeg|png)$/i, '.webp')} type="image/webp" />
+                        <img
+                          src={rev.screenshotUrl}
+                          alt="Результаты учеников образовательного центра Опора"
+                          width="1206"
+                          height="1280"
+                          loading="lazy"
+                          className="max-w-full max-h-full w-auto h-auto object-contain group-hover:scale-105 transition-transform duration-500"
+                        />
+                      </picture>
+                      {/* Оверлей при наведении */}
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all duration-300 flex items-center justify-center">
+                        <ZoomIn className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-300 drop-shadow-lg" />
+                      </div>
+                      {/* Платформа */}
+                      <span className="absolute top-2 left-2 bg-black/45 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-lg pointer-events-none">
+                        Результаты учеников
+                      </span>
+                    </div>
+                  </button>
+                ))}
               </div>
 
-              {/* Button to leave a review */}
-              <div className="pt-2">
+              {/* Точки-индикаторы */}
+              {approvedReviews.length > 3 && (
+                <div className="flex justify-center gap-1.5 mt-6">
+                  {Array.from({ length: Math.ceil(approvedReviews.length / cardsPerView()) }).map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        const el = reviewSliderRef.current;
+                        if (!el) return;
+                        const card = el.querySelector('.review-slide-card') as HTMLElement;
+                        if (!card) return;
+                        const cardW = card.offsetWidth + 16;
+                        const maxScroll = el.scrollWidth - el.clientWidth;
+                        el.scrollTo({ left: Math.min(cardW * cardsPerView() * i, maxScroll), behavior: 'smooth' });
+                      }}
+                      className={`w-2 h-2 rounded-full transition-all ${i === reviewScrollIdx ? 'bg-brand-teal w-4' : 'bg-brand-sage/30 hover:bg-brand-sage/50'}`}
+                      aria-label={`Страница отзывов ${i + 1}`}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Кнопка "Оставить отзыв" */}
+              <div className="text-center mt-8">
                 <button
                   onClick={() => setShowReviewModal(true)}
                   className="bg-transparent hover:bg-brand-teal/10 text-brand-teal font-bold py-2.5 px-5 rounded-xl border-2 border-brand-teal text-xs uppercase tracking-wider transition-all"
@@ -1461,71 +2172,8 @@ export default function App() {
                 </button>
               </div>
             </div>
+          )}
 
-            {/* Right side: Carousel */}
-            <div className="lg:col-span-8">
-              {approvedReviews.length === 0 ? (
-                <div className="text-center py-12 text-brand-brown-light italic">Отзывы загружаются...</div>
-              ) : (
-                <div className="relative">
-                  {/* Carousel Card Wrapper */}
-                  <div className="bg-brand-cream p-8 sm:p-10 rounded-3xl border border-brand-sage/15 shadow-lamp-lg relative min-h-[220px] flex flex-col justify-between">
-                    
-                    {/* Decorative quotes */}
-                    <div className="absolute top-4 left-6 text-brand-gold font-serif text-6xl select-none opacity-50 font-black">“</div>
-                    
-                    <div className="space-y-4 z-10">
-                      <p className="text-sm sm:text-base text-brand-brown-dark italic leading-relaxed">
-                        "{approvedReviews[reviewIndex].text}"
-                      </p>
-                      
-                      <div className="flex justify-between items-center pt-4 border-t border-brand-sage/5">
-                        <div>
-                          <h4 className="font-display font-bold text-sm text-brand-brown-dark">
-                            {approvedReviews[reviewIndex].name}
-                          </h4>
-                          <span className="text-xs text-brand-amber font-semibold block">
-                            Курс: {approvedReviews[reviewIndex].className}
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center gap-0.5 text-brand-gold">
-                          {Array.from({ length: approvedReviews[reviewIndex].rating }).map((_, i) => (
-                            <Star key={i} className="w-3.5 h-3.5 fill-current" />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* Carousel Nav arrows */}
-                  <div className="flex justify-end gap-3 mt-4">
-                    <button 
-                      onClick={prevReview}
-                      className="p-2.5 bg-brand-cream text-brand-teal hover:text-brand-amber border border-brand-sage/25 rounded-full shadow-sm hover:shadow-md transition-all"
-                      title="Предыдущий отзыв"
-                      id="prev_review_btn"
-                    >
-                      <ChevronLeft className="w-5 h-5" />
-                    </button>
-                    <span className="text-xs font-bold text-brand-brown-light/70 self-center">
-                      {reviewIndex + 1} из {approvedReviews.length}
-                    </span>
-                    <button 
-                      onClick={nextReview}
-                      className="p-2.5 bg-brand-cream text-brand-teal hover:text-brand-amber border border-brand-sage/25 rounded-full shadow-sm hover:shadow-md transition-all"
-                      title="Следующий отзыв"
-                      id="next_review_btn"
-                    >
-                      <ChevronRight className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-          </div>
         </div>
 
         {/* WRITE REVIEW MODAL FORM */}
@@ -1692,8 +2340,9 @@ export default function App() {
                     </div>
 
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs font-bold text-brand-brown-dark">Интересующий предмет или услуга</label>
-                      <select 
+                      <label htmlFor="lead-subject" className="text-xs font-bold text-brand-brown-dark">Интересующий предмет или услуга</label>
+                      <select
+                        id="lead-subject"
                         value={leadForm.subject}
                         onChange={(e) => setLeadForm(prev => ({ ...prev, subject: e.target.value }))}
                         className="p-2.5 rounded-xl bg-brand-cream border border-brand-sage/20 focus:outline-none focus:border-brand-teal text-sm"
@@ -1730,7 +2379,7 @@ export default function App() {
                     </button>
 
                     <p className="text-[10px] text-center text-brand-brown-light leading-snug">
-                      Нажимая кнопку, вы соглашаетесь на обработку персональных данных в соответствии с Федеральным законом №152-ФЗ.
+                      Нажимая кнопку, вы соглашаетесь на <a href="/privacy.html" target="_blank" className="underline hover:text-brand-teal transition-colors">обработку персональных данных</a> в соответствии с Федеральным законом №152-ФЗ.
                     </p>
                   </form>
                 )}
@@ -1745,15 +2394,16 @@ export default function App() {
       {/* LEAD BOOKING FLOATING MODAL */}
       {showLeadModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-brown-dark/50 backdrop-blur-sm" id="booking_popup_modal">
-          <div className="bg-brand-cream rounded-3xl max-w-md w-full border border-brand-sage/20 shadow-lamp-lg p-6 sm:p-8 relative animate-in fade-in zoom-in duration-300">
-            <button 
+          <div className="bg-brand-cream rounded-3xl max-w-md w-full max-h-[90vh] border border-brand-sage/20 shadow-lamp-lg relative animate-in fade-in zoom-in duration-300 flex flex-col">
+            <button
               onClick={() => setShowLeadModal(false)}
-              className="absolute top-4 right-4 p-2 text-brand-brown-dark/60 hover:text-brand-brown-dark hover:bg-brand-mint-pale rounded-full"
+              className="absolute top-4 right-4 z-10 p-2 text-brand-brown-dark/60 hover:text-brand-brown-dark hover:bg-brand-mint-pale rounded-full"
               id="close_booking_popup"
             >
               <X className="w-5 h-5" />
             </button>
 
+            <div className="overflow-y-auto flex-1 p-6 sm:pb-2">
             {leadSuccess ? (
               <div className="text-center py-6 space-y-4">
                 <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-emerald-800">
@@ -1763,21 +2413,15 @@ export default function App() {
                 <p className="text-xs text-brand-brown-light leading-relaxed">
                   Мы получили ваши данные и свяжемся с вами в течение 15 минут. Готовимся к встрече в нашем центре!
                 </p>
-                <button 
-                  onClick={() => setShowLeadModal(false)}
-                  className="bg-brand-teal text-brand-cream font-bold py-2 px-6 rounded-lg text-xs"
-                >
-                  Отлично
-                </button>
               </div>
             ) : (
-              <form onSubmit={submitLead} className="space-y-4">
+              <form onSubmit={submitLead} className="space-y-4" id="lead_modal_form">
                 <h3 className="font-display font-bold text-lg text-brand-brown-dark">Запись на занятие</h3>
                 <p className="text-xs text-brand-brown-light">Оставьте ваши контакты, и мы перезвоним вам в ближайшие минуты для детального обсуждения.</p>
-                
+
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-brand-brown-dark">Ваше Имя</label>
-                  <input 
+                  <input
                     type="text"
                     value={leadForm.name}
                     onChange={(e) => setLeadForm(prev => ({ ...prev, name: e.target.value }))}
@@ -1789,7 +2433,7 @@ export default function App() {
 
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-brand-brown-dark">Контактный телефон</label>
-                  <input 
+                  <input
                     type="tel"
                     value={leadForm.phone}
                     onChange={(e) => handlePhoneChange(e.target.value)}
@@ -1802,7 +2446,7 @@ export default function App() {
 
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-brand-brown-dark">Выбранное направление</label>
-                  <input 
+                  <input
                     type="text"
                     value={leadForm.subject}
                     readOnly
@@ -1812,7 +2456,7 @@ export default function App() {
 
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-brand-brown-dark">Комментарий</label>
-                  <textarea 
+                  <textarea
                     value={leadForm.comment}
                     onChange={(e) => setLeadForm(prev => ({ ...prev, comment: e.target.value }))}
                     className="p-2.5 rounded-xl bg-brand-cream border border-brand-sage/20 focus:outline-none focus:border-brand-teal text-sm h-16"
@@ -1820,18 +2464,40 @@ export default function App() {
                   />
                 </div>
 
-                <button 
-                  type="submit" 
+                <p className="text-[10px] text-center text-brand-brown-light leading-snug">
+                  Нажимая кнопку, вы соглашаетесь на <a href="/privacy.html" target="_blank" className="underline hover:text-brand-teal transition-colors">обработку персональных данных</a> в соответствии с Федеральным законом №152-ФЗ.
+                </p>
+              </form>
+            )}
+            </div>{/* конец скроллящейся области */}
+
+            {/* Кнопка отправки -- sticky, вне скролла */}
+            {!leadSuccess && (
+              <div className="px-6 sm:px-8 pb-6 pt-2 flex-shrink-0 bg-brand-cream rounded-b-3xl">
+                <button
+                  type="submit"
+                  form="lead_modal_form"
                   disabled={isSubmittingLead}
                   className="w-full bg-brand-amber hover:bg-brand-amber/90 disabled:bg-brand-sage/50 text-brand-cream font-bold py-3 rounded-xl uppercase tracking-wider text-xs shadow-lamp"
                 >
                   {isSubmittingLead ? 'Отправка...' : 'Записаться'}
                 </button>
-              </form>
+              </div>
             )}
+
+            {leadSuccess && (
+              <div className="px-6 sm:px-8 pb-6 pt-2 flex-shrink-0 bg-brand-cream rounded-b-3xl">
+                <button
+                  onClick={() => setShowLeadModal(false)}
+                  className="w-full bg-brand-teal text-brand-cream font-bold py-3 rounded-xl text-xs uppercase tracking-wider"
+                >
+                  Отлично
+                </button>
+              </div>
+            )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* 8. CONTACTS, MAP & FOOTER */}
       <section className="py-16 bg-brand-mint-pale/40 relative border-t border-brand-mint-pale" id="contacts">
@@ -1872,7 +2538,7 @@ export default function App() {
                     <a href="tel:+79604787276" className="font-bold text-base text-brand-teal hover:text-brand-amber transition-colors">
                       +7 (960) 478-72-76
                     </a>
-                    <span className="text-xs text-brand-brown-light/70 block">Звонки и сообщения WhatsApp / Telegram ежедневно</span>
+                    <span className="text-xs text-brand-brown-light/70 block">Звонки и сообщения WhatsApp ежедневно</span>
                   </div>
                 </div>
 
@@ -1890,21 +2556,13 @@ export default function App() {
                 {/* Social Badges */}
                 <div className="flex items-center gap-3 pt-2">
                   <span className="text-xs font-bold text-brand-brown-light uppercase">Мы в соцсетях:</span>
-                  <a 
-                    href="https://t.me/oporaed" 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    className="bg-[#229ED9] hover:bg-[#229ED9]/95 text-brand-cream font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 shadow-sm transition-all"
+                  <a
+                    href="https://max.ru/channel_oporaed"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="bg-[#8B5CF6] hover:bg-[#8B5CF6]/90 text-brand-cream font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 shadow-sm transition-all"
                   >
-                    Telegram @oporaed
-                  </a>
-                  <a 
-                    href="https://vk.com" 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    className="bg-[#4C75A3] hover:bg-[#4C75A3]/95 text-brand-cream font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 shadow-sm transition-all"
-                  >
-                    ВКонтакте
+                    Наш канал в MAX
                   </a>
                 </div>
 
@@ -1912,46 +2570,47 @@ export default function App() {
             </div>
 
             {/* Right column map container */}
-            <div className="lg:col-span-7 bg-brand-cream p-4 rounded-3xl border border-brand-sage/15 shadow-lamp w-full relative">
+            <div ref={mapContainerRef} className="lg:col-span-7 bg-brand-cream p-4 rounded-3xl border border-brand-sage/15 shadow-lamp w-full relative">
               <div className="w-full h-[350px] rounded-2xl overflow-hidden relative border border-brand-sage/10 bg-brand-mint-pale/30 flex items-center justify-center text-center">
-                
-                {/* Embeded live map with fallback link */}
-                <iframe 
-                  src="https://yandex.ru/map-widget/v1/?ll=38.675685%2C44.857640&z=16&mode=search&ol=biz&oid=1202830023"
-                  className="w-full h-full border-0 rounded-2xl z-10 relative opacity-95 hover:opacity-100 transition-opacity"
-                  title="Адрес Опоры на Яндекс Картах"
-                  allowFullScreen
-                ></iframe>
 
-                {/* Background loader placeholder */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center p-6 space-y-4 text-center">
-                  <MapPin className="w-10 h-10 text-brand-teal animate-bounce" />
-                  <div className="space-y-1">
-                    <h4 className="font-display font-bold text-brand-brown-dark">Загрузка Яндекс.Карты...</h4>
-                    <p className="text-xs text-brand-brown-light">Карта Краснодарского края, ст. Северская, улица Ленина, 73</p>
+                {/* Embeded live map -- грузится только когда секция видна */}
+                {mapVisible ? (
+                  <iframe
+                    src="https://yandex.ru/map-widget/v1/?ll=38.675685%2C44.857640&z=16&mode=search&ol=biz&oid=28677234672"
+                    className="w-full h-full border-0 rounded-2xl z-10 relative opacity-95 hover:opacity-100 transition-opacity"
+                    title="Адрес Опоры на Яндекс Картах"
+                    allowFullScreen
+                  ></iframe>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-6 space-y-4 text-center">
+                    <MapPin className="w-10 h-10 text-brand-teal animate-bounce" />
+                    <div className="space-y-1">
+                      <p className="font-display font-bold text-brand-brown-dark">Карта загрузится при скролле</p>
+                      <p className="text-xs text-brand-brown-light">Краснодарский край, ст. Северская, улица Ленина, 73</p>
+                    </div>
+                    <a
+                      href="https://yandex.ru/navi/org/obrazovatelny_tsentr_opora/28677234672?si=qrzj1g9rguwa6pgpxqydhjtc74"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="bg-brand-teal text-brand-cream text-xs font-bold px-4 py-2 rounded-xl"
+                    >
+                      Открыть в Яндекс.Навигаторе
+                    </a>
                   </div>
-                  <a 
-                    href="https://yandex.ru/maps/?ll=38.675685%2C44.857640&z=16" 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="bg-brand-teal text-brand-cream text-xs font-bold px-4 py-2 rounded-xl"
-                  >
-                    Открыть в Яндекс.Навигаторе
-                  </a>
-                </div>
+                )}
 
               </div>
 
               {/* Driving/Transport Hint card */}
               <div className="p-4 bg-brand-mint-pale/30 border-t border-brand-sage/5 rounded-2xl mt-4 flex items-center justify-between text-xs font-bold text-brand-teal">
                 <span>📍 Ориентир: Центральная станичная улица Ленина</span>
-                <a 
-                  href="https://yandex.ru/maps" 
-                  target="_blank" 
+                <a
+                  href="https://yandex.ru/navi/org/obrazovatelny_tsentr_opora/28677234672?si=qrzj1g9rguwa6pgpxqydhjtc74"
+                  target="_blank"
                   rel="noreferrer"
                   className="hover:text-brand-amber flex items-center gap-1 transition-colors"
                 >
-                  Проложить маршрут в 2ГИС / Яндекс <ExternalLink className="w-3.5 h-3.5" />
+                  Проложить маршрут в Яндекс.Навигаторе <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               </div>
             </div>
@@ -1960,28 +2619,29 @@ export default function App() {
 
           {/* Footer Branding credits */}
           <footer className="mt-16 pt-8 border-t border-brand-sage/10 flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-3">
-              <LogoSVG className="w-8 h-8" />
-              <div>
-                <span className="font-display font-bold text-brand-teal tracking-wider text-sm block">ОПОРА СЕВЕРСКАЯ</span>
-                <span className="text-[10px] text-brand-brown-light/70 font-medium">© 2026 Образовательный центр. Все права защищены.</span>
-              </div>
-            </div>
-
-            {/* Proposed Domain recommendations as requested in SEO technical */}
-            <div className="text-center md:text-right space-y-1 text-xs">
-              <span className="text-brand-brown-light/80 block">🌐 Рекомендуемые домены для регистрации:</span>
-              <div className="flex flex-wrap gap-2 justify-center md:justify-end">
-                <span className="bg-brand-cream px-2 py-0.5 rounded border border-brand-sage/15 text-[10px] font-mono font-semibold">опора-северская.рф</span>
-                <span className="bg-brand-cream px-2 py-0.5 rounded border border-brand-sage/15 text-[10px] font-mono font-semibold">opora-severskaya.ru</span>
-                <span className="bg-brand-cream px-2 py-0.5 rounded border border-brand-sage/15 text-[10px] font-mono font-semibold">опора-центр.рф</span>
-              </div>
+            <span className="text-[10px] text-brand-brown-light/70 font-medium">© 2026 Образовательный центр «Опора». Все права защищены.</span>
+            <div className="flex items-center gap-4">
+              <a
+                href="/privacy.html"
+                className="text-[10px] text-brand-brown-light/50 hover:text-brand-teal transition-colors"
+              >
+                Политика обработки персональных данных
+              </a>
+              <a
+                href="https://molvamarketing.com"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[10px] text-brand-brown-light/50 hover:text-brand-teal transition-colors"
+              >
+                Разработано в MOLVA
+              </a>
             </div>
           </footer>
 
         </div>
       </section>
 
+      </main>
     </div>
   );
 }
