@@ -30,6 +30,7 @@ const SUBJECT_CATEGORIES = [
   { id: 'social', label: 'Обществознание', icon: Award, color: 'text-cyan-600 bg-cyan-50', border: 'border-cyan-200 hover:border-cyan-400' },
   { id: 'literature', label: 'Литература', icon: Scroll, color: 'text-rose-600 bg-rose-50', border: 'border-rose-200 hover:border-rose-400' },
   { id: 'development', label: 'Развитие / Творчество', icon: Sparkles, color: 'text-pink-600 bg-pink-50', border: 'border-pink-200 hover:border-pink-400' },
+  { id: 'preschool', label: 'Подготовка к школе', icon: Baby, color: 'text-fuchsia-600 bg-fuchsia-50', border: 'border-fuchsia-200 hover:border-fuchsia-400' },
   { id: 'creativity', label: '3D-моделирование', icon: Box, color: 'text-lime-600 bg-lime-50', border: 'border-lime-200 hover:border-lime-400' },
   { id: 'other', label: 'Продлёнка', icon: Clock, color: 'text-teal-600 bg-teal-50', border: 'border-teal-200 hover:border-teal-400' },
 ];

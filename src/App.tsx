@@ -1397,7 +1397,7 @@ export default function App() {
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {/* Акция 1 — пробный урок в подарок */}
             <div className="bg-gradient-to-br from-brand-teal/5 to-brand-teal/10 rounded-3xl border border-brand-teal/15 p-6 shadow-lamp flex flex-col items-center text-center space-y-4 hover:-translate-y-1 transition-transform duration-300">
               <div className="w-14 h-14 rounded-2xl bg-brand-teal/15 flex items-center justify-center text-3xl">
@@ -1414,7 +1414,23 @@ export default function App() {
               </a>
             </div>
 
-            {/* Акция 2 — скидка 10% на 4 занятия */}
+            {/* Акция 2 — второй предмет бесплатно */}
+            <div className="bg-gradient-to-br from-rose-50 to-rose-100/50 rounded-3xl border border-rose-200/30 p-6 shadow-lamp flex flex-col items-center text-center space-y-4 hover:-translate-y-1 transition-transform duration-300">
+              <div className="w-14 h-14 rounded-2xl bg-rose-100 flex items-center justify-center text-3xl">
+                🎓
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-display font-black text-lg text-rose-600">Второй предмет бесплатно</h3>
+                <p className="text-sm text-brand-brown-light leading-relaxed">
+                  При покупке абонемента на занятия по любому предмету — дарим 2 бесплатных урока по любому другому направлению центра.
+                </p>
+              </div>
+              <a href="#booking_section" className="text-xs font-bold text-rose-600 hover:text-rose-800 transition-colors flex items-center gap-1 mt-auto pt-2">
+                Записаться <ChevronRight className="w-3.5 h-3.5" />
+              </a>
+            </div>
+
+            {/* Акция 3 — скидка 10% на 4 занятия */}
             <div className="bg-gradient-to-br from-brand-amber/5 to-brand-amber/10 rounded-3xl border border-brand-amber/15 p-6 shadow-lamp flex flex-col items-center text-center space-y-4 hover:-translate-y-1 transition-transform duration-300">
               <div className="w-14 h-14 rounded-2xl bg-brand-amber/15 flex items-center justify-center text-3xl">
                 💰
@@ -1430,7 +1446,7 @@ export default function App() {
               </a>
             </div>
 
-            {/* Акция 3 — скидка за рекомендацию */}
+            {/* Акция 4 — скидка за рекомендацию */}
             <div className="bg-gradient-to-br from-brand-mint-pale to-brand-mint-light/40 rounded-3xl border border-brand-sage/15 p-6 shadow-lamp flex flex-col items-center text-center space-y-4 hover:-translate-y-1 transition-transform duration-300">
               <div className="w-14 h-14 rounded-2xl bg-brand-sage/15 flex items-center justify-center text-3xl">
                 🤝

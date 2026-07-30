@@ -214,6 +214,7 @@ export const TEACHER_LINKS: TeacherSubjectLink[] = [
   { teacherId: 't5', category: 'math', grades: ['1-4'] },
   { teacherId: 't5', category: 'russian', grades: ['1-4'] },
   { teacherId: 't5', category: 'other', grades: ['1-4'] },
+  { teacherId: 't5', category: 'preschool', grades: ['preschool'] },
 
   // Ягодинцева — математика
   { teacherId: 't6', category: 'math', grades: ['1-4', '5-8', '9-11'] },
@@ -222,6 +223,8 @@ export const TEACHER_LINKS: TeacherSubjectLink[] = [
   { teacherId: 't7', category: 'russian', grades: ['1-4', '5-8', '9-11'] },
   { teacherId: 't7', category: 'literature', grades: ['9-11'] },
   { teacherId: 't7', category: 'development', grades: ['preschool', '1-4'] },
+  { teacherId: 't7', category: 'other', grades: ['1-4'] },
+  { teacherId: 't7', category: 'preschool', grades: ['preschool'] },
 
   // Терехова — русский, литература
   { teacherId: 't8', category: 'russian', grades: ['1-4', '5-8', '9-11'] },
@@ -234,6 +237,8 @@ export const TEACHER_LINKS: TeacherSubjectLink[] = [
 
   // Голодок — английский (все классы)
   { teacherId: 't10', category: 'english', grades: ['preschool', '1-4', '5-8', '9-11'] },
+  { teacherId: 't10', category: 'other', grades: ['1-4'] },
+  { teacherId: 't10', category: 'preschool', grades: ['preschool'] },
 
   // Батурина — история и обществознание (9-11)
   { teacherId: 't11', category: 'history', grades: ['9-11'] },
@@ -244,6 +249,7 @@ export const TEACHER_LINKS: TeacherSubjectLink[] = [
 
   // Гонтарь — логопед-дефектолог (дошкольники и младшие классы)
   { teacherId: 't13', category: 'development', grades: ['preschool', '1-4'] },
+  { teacherId: 't13', category: 'preschool', grades: ['preschool'] },
 ];
 
 // Категории, в которых только индивидуальный формат
@@ -507,27 +513,27 @@ export const SERVICE_ITEMS: ServiceItem[] = [
     ]
   },
   {
-    id: 'school_prep',
-    name: 'Подготовка к школе',
-    description: 'Комплексный курс: обучение чтению, письму, математике, развитие логики, речи и усидчивости.',
-    category: 'development',
-    grades: ['preschool'],
-    icon: 'Backpack',
-    details: '12 дней по 4 часа ежедневно',
-    formats: [
-      { name: 'Группа 5 человек', price: '4000 ₽ / мес', details: '12 дней × 4 часа' }
-    ]
-  },
-  {
     id: 'after_school',
-    name: 'Продлёнка (После уроков)',
-    description: 'Ежедневная забота о школьнике после уроков. Помощь в подготовке домашних заданий, прогулки, игры.',
+    name: 'Продлёнка',
+    description: 'Ежедневно: 2 часа для первой смены и 2 часа для второй. Подготовим уроки, заинтересуем учёбой, найдём сильные стороны ребёнка, объясним непонятный материал.',
     category: 'other',
     grades: ['1-4'],
     icon: 'Clock',
     details: '2 часа ежедневно',
     formats: [
-      { name: 'Абонемент на месяц', price: '3800 ₽ / мес', details: '2 часа ежедневно' }
+      { name: 'Абонемент на месяц', price: '6000 ₽ / мес', details: 'Группа до 5 человек, 2 часа ежедневно' }
+    ]
+  },
+  {
+    id: 'preschool_prep',
+    name: 'Подготовка к школе',
+    description: 'Три раза в неделю по 4 часа. Читательская грамотность, письмо, математика, английский, постановка речи, нейрогимнастика — всё для уверенного старта ребёнка.',
+    category: 'preschool',
+    grades: ['preschool'],
+    icon: 'Baby',
+    details: '3 раза в неделю × 4 часа',
+    formats: [
+      { name: 'Абонемент на месяц', price: '6500 ₽ / мес', details: '3 раза в неделю по 4 часа' }
     ]
   }
 ];
