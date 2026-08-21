@@ -43,6 +43,7 @@ class PaymentRead(BaseModel):
 class BalanceTransactionRead(BaseModel):
     id: uuid.UUID
     child_id: uuid.UUID
+    child_name: Optional[str] = None
     child_subject_id: uuid.UUID
     subject_id: uuid.UUID
     subject_name: Optional[str] = None
@@ -51,6 +52,7 @@ class BalanceTransactionRead(BaseModel):
     payment_id: Optional[uuid.UUID] = None
     transaction_type: BalanceTransactionType
     quantity: int
+    balance_after: Optional[int] = None
     comment: Optional[str] = None
     created_at: datetime
     created_by_name: Optional[str] = None
@@ -81,8 +83,10 @@ class SubjectBalanceSummary(BaseModel):
 class TeacherSalaryAccrualRead(BaseModel):
     id: uuid.UUID
     teacher_id: uuid.UUID
+    teacher_name: Optional[str] = None
     lesson_id: uuid.UUID
     lesson_date: Optional[datetime] = None
+    child_name: Optional[str] = None
     subject_name: Optional[str] = None
     amount: Decimal
     accrued_at: datetime
@@ -126,3 +130,17 @@ class TeacherSalarySummary(BaseModel):
     overpayment: Decimal
     accruals: List[TeacherSalaryAccrualRead] = []
     payments: List[TeacherSalaryPaymentRead] = []
+
+
+class BalanceReportItem(BaseModel):
+    child_id: uuid.UUID
+    child_name: str
+    parent_id: Optional[uuid.UUID] = None
+    parent_name: Optional[str] = None
+    parent_phone: Optional[str] = None
+    child_subject_id: uuid.UUID
+    subject_name: str
+    teacher_name: str
+    balance_lessons: int
+    completed_lessons: int
+    is_low_balance: bool

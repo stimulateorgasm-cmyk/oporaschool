@@ -77,6 +77,21 @@ async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+@router.get("/users", response_model=List[UserRead], summary="Список пользователей (Руководитель/Администратор)")
+async def get_users(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(["manager", "administrator"])),
+):
+    stmt = (
+        select(User)
+        .where(User.deleted_at.is_(None))
+        .options(selectinload(User.roles))
+        .order_by(User.full_name)
+    )
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
 @router.post("/users", response_model=UserRead, summary="Создание пользователя (только Руководитель)")
 async def create_user(
     data: UserCreate,

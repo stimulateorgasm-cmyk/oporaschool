@@ -104,9 +104,13 @@ class ApiClient {
 
       return await response.json();
     } catch (err: any) {
-      // If network fails (backend not running locally), provide seamless fallback for UI demonstration
-      console.warn(`API call failed for ${endpoint}, using fallback handler:`, err);
-      return this.handleFallback<T>(endpoint, options);
+      // Демо-режим только для локальной разработки (npm run dev).
+      // В production-сборке ошибки API пробрасываются дальше, а не маскируются демо-данными.
+      if (import.meta.env.DEV) {
+        console.warn(`API call failed for ${endpoint}, using fallback handler:`, err);
+        return this.handleFallback<T>(endpoint, options);
+      }
+      throw err;
     }
   }
 

@@ -55,7 +55,7 @@ export const System: React.FC = () => {
     return (
       l.entity_type.toLowerCase().includes(term) ||
       l.action.toLowerCase().includes(term) ||
-      l.user_name.toLowerCase().includes(term)
+      (l.user_name ?? '').toLowerCase().includes(term)
     );
   });
 
@@ -190,7 +190,7 @@ export const System: React.FC = () => {
                         <td className="p-3.5 font-sans text-stone-700 whitespace-nowrap">
                           <span className="font-semibold">{log.entity_type}</span>
                           <span className="text-stone-400 text-[11px] ml-1">
-                            #{log.entity_id.substring(0, 8)}
+                            #{log.entity_id?.substring(0, 8)}
                           </span>
                         </td>
                         <td className="p-3.5 text-stone-500 whitespace-nowrap text-[11px]">

@@ -5,9 +5,9 @@ from typing import Optional, Tuple
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.academic import Teacher, TeacherRate
+from app.models.academic import Teacher
 from app.models.enums import LessonFormat, SalaryPaymentStatus
-from app.models.finance import TeacherSalaryAccrual, TeacherSalaryPayment
+from app.models.finance import TeacherRate, TeacherSalaryAccrual, TeacherSalaryPayment
 from app.models.schedule import Lesson
 from app.services.audit_service import AuditService
 

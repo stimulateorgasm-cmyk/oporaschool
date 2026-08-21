@@ -10,9 +10,12 @@ from app.core.rbac import get_current_user, require_roles
 from app.models.academic import ChildSubject
 from app.models.auth import User
 from app.models.client import Child
+from app.models.enums import LessonStatus
 from app.models.finance import LessonBalanceTransaction
+from app.models.schedule import Lesson
 from app.schemas.finance import (
     BalanceCorrectionRequest,
+    BalanceReportItem,
     BalanceTransactionRead,
     SubjectBalanceSummary,
 )
@@ -109,6 +112,108 @@ async def get_balance_history(
         )
         for t in transactions
     ]
+
+
+@router.get("/report", response_model=List[BalanceReportItem], summary="Сводный отчёт по балансам всех учеников")
+async def get_balance_report(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    stmt = (
+        select(ChildSubject)
+        .where(ChildSubject.is_active == True)
+        .options(
+            selectinload(ChildSubject.child).selectinload(Child.parent),
+            selectinload(ChildSubject.subject),
+            selectinload(ChildSubject.teacher),
+        )
+    )
+    child_subjects = (await db.execute(stmt)).scalars().all()
+
+    items = []
+    for cs in child_subjects:
+        bal = await BalanceService.get_balance(db, cs.id)
+
+        completed_stmt = (
+            select(func.count())
+            .select_from(Lesson)
+            .where(
+                Lesson.child_subject_id == cs.id,
+                Lesson.status == LessonStatus.completed,
+            )
+        )
+        completed = int((await db.execute(completed_stmt)).scalar_one())
+
+        child = cs.child
+        parent = child.parent if child else None
+
+        items.append(
+            BalanceReportItem(
+                child_id=cs.child_id,
+                child_name=child.full_name if child else "",
+                parent_id=child.parent_id if child else None,
+                parent_name=parent.full_name if parent else None,
+                parent_phone=parent.phone if parent else None,
+                child_subject_id=cs.id,
+                subject_name=cs.subject.name if cs.subject else "",
+                teacher_name=cs.teacher.full_name if cs.teacher else "",
+                balance_lessons=bal,
+                completed_lessons=completed,
+                is_low_balance=bal <= settings.LOW_BALANCE_THRESHOLD,
+            )
+        )
+    return items
+
+
+@router.get("/transactions", response_model=List[BalanceTransactionRead], summary="Полный реестр всех транзакций баланса")
+async def get_all_balance_transactions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    stmt = (
+        select(LessonBalanceTransaction)
+        .options(
+            selectinload(LessonBalanceTransaction.child),
+            selectinload(LessonBalanceTransaction.subject),
+        )
+        .order_by(
+            LessonBalanceTransaction.created_at.asc(),
+            LessonBalanceTransaction.id.asc(),
+        )
+    )
+    transactions = (await db.execute(stmt)).scalars().all()
+
+    # Скользящий остаток по каждому направлению (child_subject)
+    running: dict = {}
+    items = []
+    for t in transactions:
+        prev = running.get(t.child_subject_id, 0)
+        balance_after = prev + t.quantity
+        running[t.child_subject_id] = balance_after
+
+        items.append(
+            BalanceTransactionRead(
+                id=t.id,
+                child_id=t.child_id,
+                child_name=t.child.full_name if t.child else None,
+                child_subject_id=t.child_subject_id,
+                subject_id=t.subject_id,
+                subject_name=t.subject.name if t.subject else None,
+                package_id=t.package_id,
+                lesson_id=t.lesson_id,
+                payment_id=t.payment_id,
+                transaction_type=t.transaction_type,
+                quantity=t.quantity,
+                balance_after=balance_after,
+                comment=t.comment,
+                created_at=t.created_at,
+                created_by_name=None,
+            )
+        )
+
+    # Новые записи — сверху
+    items.reverse()
+    return items
 
 
 @router.post("/correction", response_model=BalanceTransactionRead, summary="Ручная корректировка баланса (только Руководитель)")

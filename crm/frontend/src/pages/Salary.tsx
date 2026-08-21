@@ -249,7 +249,7 @@ export const Salary: React.FC = () => {
                   accruals.map((a) => (
                     <tr key={a.id} className="hover:bg-stone-50/60 transition-colors">
                       <td className="p-3.5 text-stone-600 whitespace-nowrap font-mono">
-                        {new Date(a.created_at).toLocaleDateString('ru-RU')}
+                        {new Date(a.lesson_date ?? a.accrued_at).toLocaleDateString('ru-RU')}
                       </td>
                       <td className="p-3.5 font-bold text-stone-900 whitespace-nowrap">
                         {a.teacher_name}
@@ -263,7 +263,7 @@ export const Salary: React.FC = () => {
                       </td>
                       <td className="p-3.5 whitespace-nowrap">
                         <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-stone-100 text-stone-700">
-                          {a.status === 'accrued' ? 'Начислено' : a.status}
+                          {a.is_reversed ? 'Сторнировано' : 'Начислено'}
                         </span>
                       </td>
                     </tr>

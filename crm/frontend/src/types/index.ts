@@ -401,6 +401,7 @@ export interface PaymentRead {
 export interface BalanceTransactionRead {
   id: string;
   child_id: string;
+  child_name?: string;
   child_subject_id: string;
   subject_id: string;
   subject_name?: string;
@@ -409,7 +410,9 @@ export interface BalanceTransactionRead {
   payment_id?: string;
   transaction_type: BalanceTransactionType;
   quantity: number;
+  balance_after?: number;
   comment?: string;
+  reason?: string;
   created_at: string;
   created_by_name?: string;
 }
@@ -451,8 +454,10 @@ export interface SubjectBalanceSummary {
 export interface TeacherSalaryAccrualRead {
   id: string;
   teacher_id: string;
+  teacher_name?: string;
   lesson_id: string;
   lesson_date?: string;
+  child_name?: string;
   subject_name?: string;
   amount: number | string;
   accrued_at: string;

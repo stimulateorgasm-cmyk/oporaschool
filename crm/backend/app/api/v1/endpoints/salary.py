@@ -98,6 +98,108 @@ async def get_teacher_salary_summary(
     )
 
 
+@router.get("/summary", response_model=List[TeacherSalarySummary], summary="Сводка по всем педагогам")
+async def get_all_salary_summaries(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    teachers = (
+        await db.execute(
+            select(Teacher)
+            .where(Teacher.deleted_at.is_(None))
+            .order_by(Teacher.full_name)
+        )
+    ).scalars().all()
+
+    summaries = []
+    for teacher in teachers:
+        accrued, paid, debt, overpayment = await SalaryService.calculate_teacher_balance(
+            db, teacher.id
+        )
+        summaries.append(
+            TeacherSalarySummary(
+                teacher_id=teacher.id,
+                teacher_name=teacher.full_name,
+                total_accrued=accrued,
+                total_paid=paid,
+                debt=debt,
+                overpayment=overpayment,
+                accruals=[],
+                payments=[],
+            )
+        )
+    return summaries
+
+
+@router.get("/accruals", response_model=List[TeacherSalaryAccrualRead], summary="Все начисления по урокам")
+async def get_salary_accruals(
+    teacher_id: Optional[uuid.UUID] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    stmt = (
+        select(TeacherSalaryAccrual)
+        .options(
+            selectinload(TeacherSalaryAccrual.teacher),
+            selectinload(TeacherSalaryAccrual.lesson),
+        )
+        .order_by(TeacherSalaryAccrual.accrued_at.desc())
+    )
+    if teacher_id:
+        stmt = stmt.where(TeacherSalaryAccrual.teacher_id == teacher_id)
+    accruals = (await db.execute(stmt)).scalars().all()
+
+    return [
+        TeacherSalaryAccrualRead(
+            id=a.id,
+            teacher_id=a.teacher_id,
+            teacher_name=a.teacher.full_name if a.teacher else None,
+            lesson_id=a.lesson_id,
+            lesson_date=a.lesson.starts_at if a.lesson else None,
+            child_name=a.lesson.child.full_name if a.lesson and a.lesson.child else None,
+            subject_name=a.lesson.subject.name if a.lesson and a.lesson.subject else None,
+            amount=a.amount,
+            accrued_at=a.accrued_at,
+            is_reversed=a.is_reversed,
+            reversal_reason=a.reversal_reason,
+        )
+        for a in accruals
+    ]
+
+
+@router.get("/payments", response_model=List[TeacherSalaryPaymentRead], summary="Все выплаты зарплаты")
+async def get_salary_payments(
+    teacher_id: Optional[uuid.UUID] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    stmt = (
+        select(TeacherSalaryPayment)
+        .options(selectinload(TeacherSalaryPayment.teacher))
+        .order_by(TeacherSalaryPayment.payment_date.desc())
+    )
+    if teacher_id:
+        stmt = stmt.where(TeacherSalaryPayment.teacher_id == teacher_id)
+    payments = (await db.execute(stmt)).scalars().all()
+
+    return [
+        TeacherSalaryPaymentRead(
+            id=p.id,
+            teacher_id=p.teacher_id,
+            teacher_name=p.teacher.full_name if p.teacher else None,
+            amount=p.amount,
+            payment_date=p.payment_date,
+            period_from=p.period_from,
+            period_to=p.period_to,
+            payment_method=p.payment_method,
+            status=p.status,
+            comment=p.comment,
+            created_at=p.created_at,
+        )
+        for p in payments
+    ]
+
+
 @router.post("/payments", response_model=TeacherSalaryPaymentRead, summary="Выплата зарплаты педагогу (Руководитель)")
 async def create_salary_payment(
     data: TeacherSalaryPaymentCreate,

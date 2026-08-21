@@ -36,9 +36,9 @@ export const Payments: React.FC = () => {
     if (!search) return true;
     const term = search.toLowerCase();
     return (
-      p.parent_name.toLowerCase().includes(term) ||
-      p.child_name.toLowerCase().includes(term) ||
-      p.subject_name.toLowerCase().includes(term) ||
+      (p.parent_name ?? '').toLowerCase().includes(term) ||
+      (p.child_name ?? '').toLowerCase().includes(term) ||
+      (p.subject_name ?? '').toLowerCase().includes(term) ||
       (p.comment && p.comment.toLowerCase().includes(term))
     );
   });

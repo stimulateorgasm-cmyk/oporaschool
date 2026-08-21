@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal, Base, engine
 from app.core.security import get_password_hash
-from app.models.academic import ChildSubject, Subject, Teacher, TeacherRate, TeacherSubject
+from app.models.academic import ChildSubject, Subject, Teacher, TeacherSubject
 from app.models.auth import Permission, Role, RolePermission, User, UserRole
 from app.models.client import Child, Parent
 from app.models.enums import (
@@ -21,7 +21,12 @@ from app.models.enums import (
     TeacherStatus,
     UserStatus,
 )
-from app.models.finance import ClientPayment, LessonBalanceTransaction, LessonPackage
+from app.models.finance import (
+    ClientPayment,
+    LessonBalanceTransaction,
+    LessonPackage,
+    TeacherRate,
+)
 from app.models.schedule import Lesson, Room
 
 

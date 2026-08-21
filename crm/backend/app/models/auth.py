@@ -60,7 +60,11 @@ class Role(Base):
         lazy="selectin",
     )
     users: Mapped[List["User"]] = relationship(
-        "User", secondary="user_roles", back_populates="roles"
+        "User",
+        secondary="user_roles",
+        back_populates="roles",
+        primaryjoin="Role.id == UserRole.role_id",
+        secondaryjoin="UserRole.user_id == User.id",
     )
 
 
@@ -131,7 +135,12 @@ class User(Base):
     )
 
     roles: Mapped[List["Role"]] = relationship(
-        "Role", secondary="user_roles", back_populates="users", lazy="selectin"
+        "Role",
+        secondary="user_roles",
+        back_populates="users",
+        lazy="selectin",
+        primaryjoin="User.id == UserRole.user_id",
+        secondaryjoin="UserRole.role_id == Role.id",
     )
     refresh_tokens: Mapped[List["RefreshToken"]] = relationship(
         "RefreshToken", back_populates="user", cascade="all, delete-orphan"

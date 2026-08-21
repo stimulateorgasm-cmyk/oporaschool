@@ -6,8 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core.rbac import get_current_user, require_roles
-from app.models.academic import Subject, Teacher, TeacherRate, TeacherSubject
+from app.models.academic import Subject, Teacher, TeacherSubject
 from app.models.auth import User
+from app.models.finance import TeacherRate
 from app.models.enums import TeacherStatus
 from app.schemas.academic import (
     SubjectCreate,
