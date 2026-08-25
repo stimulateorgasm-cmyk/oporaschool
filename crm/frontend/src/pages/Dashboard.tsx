@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { DashboardMetrics, LessonRead, ParentRead } from '../types';
+import { DashboardMetrics, LessonRead, ParentRead, ChildSubjectRead } from '../types';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -25,7 +25,7 @@ export const Dashboard: React.FC = () => {
   const [todayLessons, setTodayLessons] = useState<LessonRead[]>([]);
   const [parents, setParents] = useState<ParentRead[]>([]);
   const [rooms, setRooms] = useState<any[]>([]);
-  const [childSubjects, setChildSubjects] = useState<any[]>([]);
+  const [childSubjects, setChildSubjects] = useState<ChildSubjectRead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Modals state
@@ -37,16 +37,18 @@ export const Dashboard: React.FC = () => {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [m, l, p, r] = await Promise.all([
+      const [m, l, p, r, cs] = await Promise.all([
         api.getDashboardMetrics(),
         api.getLessons(),
         api.getClients(),
         api.getRooms(),
+        api.getChildSubjects(),
       ]);
       setMetrics(m);
       setTodayLessons(l);
       setParents(p);
       setRooms(r);
+      setChildSubjects(cs);
     } catch (err) {
       console.error('Failed to load dashboard data', err);
     } finally {
@@ -350,23 +352,8 @@ export const Dashboard: React.FC = () => {
         isOpen={isLessonModalOpen}
         onClose={() => setIsLessonModalOpen(false)}
         rooms={rooms}
-        childSubjects={[
-          {
-            id: 'cs-1',
-            child_id: 'c-1',
-            subject_id: 'sub-1',
-            subject_name: 'Математика (ОГЭ/ЕГЭ)',
-            teacher_id: 't-1',
-            teacher_name: 'Елена Викторовна Смирнова',
-            lesson_format: 'individual' as any,
-            lesson_price: 1200,
-            default_duration_minutes: 60,
-            start_date: '2024-01-15',
-            is_active: true,
-            balance_lessons: 4,
-            completed_lessons: 12,
-          },
-        ]}
+        children={parents.flatMap((p) => p.children)}
+        childSubjects={childSubjects}
         onSubmit={async (data) => {
           await api.createLesson(data);
           await loadData();

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
 import { LessonFormat, SubjectRead, TeacherCreate, TeacherStatus } from '../../types';
+import { Plus, Trash2 } from 'lucide-react';
 
 interface TeacherModalProps {
   isOpen: boolean;
@@ -8,6 +9,18 @@ interface TeacherModalProps {
   subjects: SubjectRead[];
   onSubmit: (data: TeacherCreate) => Promise<void>;
 }
+
+interface RateRow {
+  subject_id: string;
+  lesson_format: LessonFormat;
+  amount: number | string;
+}
+
+const emptyRow = (): RateRow => ({
+  subject_id: '',
+  lesson_format: LessonFormat.individual,
+  amount: 600,
+});
 
 export const TeacherModal: React.FC<TeacherModalProps> = ({
   isOpen,
@@ -20,19 +33,24 @@ export const TeacherModal: React.FC<TeacherModalProps> = ({
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [status, setStatus] = useState<TeacherStatus>(TeacherStatus.active);
   const [comment, setComment] = useState('');
-  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
-  const [rateAmount, setRateAmount] = useState<number | string>(600);
-  const [rateFormat, setRateFormat] = useState<LessonFormat>(LessonFormat.individual);
+  const [rates, setRates] = useState<RateRow[]>([emptyRow()]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const toggleSubject = (id: string) => {
-    if (selectedSubjectIds.includes(id)) {
-      setSelectedSubjectIds(selectedSubjectIds.filter((s) => s !== id));
-    } else {
-      setSelectedSubjectIds([...selectedSubjectIds, id]);
-    }
+  const addRateRow = () => {
+    setRates([...rates, emptyRow()]);
   };
+
+  const removeRateRow = (index: number) => {
+    setRates(rates.filter((_, i) => i !== index));
+  };
+
+  const updateRateRow = (index: number, field: keyof RateRow, value: string) => {
+    setRates(rates.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+  };
+
+  // Предметы, которые ещё не выбраны в других строках (чтобы не дублировать направление)
+  const selectedSubjectIds = rates.map((r) => r.subject_id).filter(Boolean);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,21 +59,11 @@ export const TeacherModal: React.FC<TeacherModalProps> = ({
       return;
     }
 
+    const validRates = rates.filter((r) => r.subject_id && Number(r.amount) > 0);
+
     try {
       setIsSubmitting(true);
       setError(null);
-
-      const initialRates =
-        selectedSubjectIds.length > 0 && Number(rateAmount) > 0
-          ? [
-              {
-                subject_id: selectedSubjectIds[0],
-                lesson_format: rateFormat,
-                amount: Number(rateAmount),
-                valid_from: startDate,
-              },
-            ]
-          : undefined;
 
       await onSubmit({
         full_name: fullName.trim(),
@@ -63,10 +71,22 @@ export const TeacherModal: React.FC<TeacherModalProps> = ({
         start_date: startDate,
         status,
         comment: comment.trim() || undefined,
-        subject_ids: selectedSubjectIds,
-        initial_rates: initialRates,
+        subject_ids: validRates.map((r) => r.subject_id),
+        initial_rates: validRates.length > 0
+          ? validRates.map((r) => ({
+              subject_id: r.subject_id,
+              lesson_format: r.lesson_format,
+              amount: Number(r.amount),
+              valid_from: startDate,
+            }))
+          : undefined,
       });
 
+      // Reset
+      setFullName('');
+      setPhone('');
+      setComment('');
+      setRates([emptyRow()]);
       onClose();
     } catch (err: any) {
       setError(err.message || 'Ошибка создания педагога');
@@ -80,7 +100,7 @@ export const TeacherModal: React.FC<TeacherModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Новый педагог"
-      subtitle="Профиль преподавателя, прикрепление предметов и базовой ставки"
+      subtitle="Профиль преподавателя и направления со ставками"
       maxWidth="md"
     >
       <form onSubmit={handleSubmit} className="space-y-3.5">
@@ -132,68 +152,85 @@ export const TeacherModal: React.FC<TeacherModalProps> = ({
           </div>
         </div>
 
-        {/* Subjects checkboxes */}
-        <div>
-          <label className="block text-xs font-semibold text-stone-700 mb-1.5">
-            Преподаваемые предметы
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            {subjects.map((sub) => {
-              const isChecked = selectedSubjectIds.includes(sub.id);
+        {/* Направления + ставки */}
+        <div className="pt-1">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-stone-800 uppercase tracking-wider">
+              Направления и ставки
+            </span>
+            <button
+              type="button"
+              onClick={addRateRow}
+              className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 hover:text-amber-800"
+            >
+              <Plus className="w-3.5 h-3.5" /> Добавить направление + ставку
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {rates.map((row, idx) => {
+              const availableSubjects = subjects.filter(
+                (s) => !selectedSubjectIds.includes(s.id) || s.id === row.subject_id
+              );
               return (
-                <label
-                  key={sub.id}
-                  className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-all ${
-                    isChecked
-                      ? 'bg-amber-50 border-amber-300 text-amber-950 font-medium'
-                      : 'bg-white border-stone-200 text-stone-600 hover:bg-stone-50'
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => toggleSubject(sub.id)}
-                    className="rounded text-amber-600 focus:ring-amber-500"
-                  />
-                  <span>{sub.name}</span>
-                </label>
+                <div key={idx} className="p-3 bg-stone-50 rounded-lg border border-stone-200">
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                    <div className="sm:col-span-5">
+                      <label className="block text-[11px] text-stone-600 mb-0.5">Направление</label>
+                      <select
+                        value={row.subject_id}
+                        onChange={(e) => updateRateRow(idx, 'subject_id', e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs rounded border border-stone-200 bg-white"
+                      >
+                        <option value="">Выберите направление</option>
+                        {availableSubjects.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="sm:col-span-3">
+                      <label className="block text-[11px] text-stone-600 mb-0.5">Формат</label>
+                      <select
+                        value={row.lesson_format}
+                        onChange={(e) =>
+                          updateRateRow(idx, 'lesson_format', e.target.value)
+                        }
+                        className="w-full px-2.5 py-1.5 text-xs rounded border border-stone-200 bg-white"
+                      >
+                        <option value={LessonFormat.individual}>Индивид.</option>
+                        <option value={LessonFormat.group}>Группа</option>
+                      </select>
+                    </div>
+                    <div className="sm:col-span-3">
+                      <label className="block text-[11px] text-stone-600 mb-0.5">Ставка (₽)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="50"
+                        value={row.amount}
+                        onChange={(e) => updateRateRow(idx, 'amount', e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs rounded border border-stone-200 bg-white font-mono"
+                      />
+                    </div>
+                    <div className="sm:col-span-1 flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => removeRateRow(idx)}
+                        disabled={rates.length === 1}
+                        className="p-1.5 text-stone-400 hover:text-rose-600 disabled:opacity-30"
+                        title="Убрать строку"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
               );
             })}
           </div>
         </div>
-
-        {/* Initial Rate */}
-        {selectedSubjectIds.length > 0 && (
-          <div className="p-3 bg-stone-50 rounded-lg border border-stone-200 space-y-2">
-            <div className="text-xs font-bold text-stone-800">
-              Базовая ставка за урок (для первого выбранного предмета)
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[11px] text-stone-600 mb-0.5">Формат</label>
-                <select
-                  value={rateFormat}
-                  onChange={(e) => setRateFormat(e.target.value as LessonFormat)}
-                  className="w-full px-2.5 py-1.5 text-xs rounded border border-stone-200 bg-white"
-                >
-                  <option value={LessonFormat.individual}>Индивидуально</option>
-                  <option value={LessonFormat.group}>Группа</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] text-stone-600 mb-0.5">Ставка педагогу (₽)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="50"
-                  value={rateAmount}
-                  onChange={(e) => setRateAmount(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs rounded border border-stone-200 bg-white font-mono"
-                />
-              </div>
-            </div>
-          </div>
-        )}
 
         <div>
           <label className="block text-xs font-semibold text-stone-700 mb-1">

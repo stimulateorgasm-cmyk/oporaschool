@@ -59,7 +59,6 @@ async def create_parent(
 ):
     parent = Parent(
         full_name=data.full_name,
-        address=data.address,
         phone=data.phone,
         secondary_phone=data.secondary_phone,
         comment=data.comment,
@@ -80,6 +79,8 @@ async def create_parent(
                 parent_id=parent.id,
                 full_name=child_data.full_name,
                 birth_date=child_data.birth_date,
+                grade=child_data.grade,
+                learning_goal=child_data.learning_goal,
                 comment=child_data.comment,
                 status=child_data.status,
             )
@@ -88,6 +89,47 @@ async def create_parent(
     await db.commit()
     await db.refresh(parent)
     return parent
+
+
+@router.get("/child-subjects", response_model=List[ChildSubjectRead], summary="Список привязок «ребёнок × направление × педагог»")
+async def list_child_subjects(
+    child_id: Optional[uuid.UUID] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Все активные привязки детей к направлениям и педагогам (для формы создания занятия)."""
+    stmt = (
+        select(ChildSubject)
+        .where(ChildSubject.is_active == True)
+        .options(
+            selectinload(ChildSubject.subject),
+            selectinload(ChildSubject.teacher),
+        )
+        .order_by(ChildSubject.created_at.desc())
+    )
+    if child_id:
+        stmt = stmt.where(ChildSubject.child_id == child_id)
+
+    result = await db.execute(stmt)
+    css = result.scalars().all()
+
+    return [
+        ChildSubjectRead(
+            id=cs.id,
+            child_id=cs.child_id,
+            subject_id=cs.subject_id,
+            subject_name=cs.subject.name,
+            teacher_id=cs.teacher_id,
+            teacher_name=cs.teacher.full_name,
+            lesson_format=cs.lesson_format,
+            lesson_price=cs.lesson_price,
+            default_duration_minutes=cs.default_duration_minutes,
+            start_date=cs.start_date,
+            end_date=cs.end_date,
+            is_active=cs.is_active,
+        )
+        for cs in css
+    ]
 
 
 @router.get("/{parent_id}", response_model=ParentRead, summary="Детали клиента")
@@ -135,6 +177,8 @@ async def add_child(
         parent_id=parent_id,
         full_name=data.full_name,
         birth_date=data.birth_date,
+        grade=data.grade,
+        learning_goal=data.learning_goal,
         comment=data.comment,
         status=data.status,
     )

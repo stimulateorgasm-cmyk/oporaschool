@@ -70,6 +70,8 @@ class Child(Base):
     )
     full_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     birth_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    grade: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    learning_goal: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[ChildStatus] = mapped_column(
         String(20), default=ChildStatus.active, nullable=False, index=True

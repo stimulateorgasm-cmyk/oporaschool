@@ -7,7 +7,6 @@ import {
   Search,
   Plus,
   Phone,
-  MapPin,
   ChevronDown,
   ChevronUp,
   BookOpen,
@@ -39,7 +38,8 @@ export const Clients: React.FC = () => {
   // Add Child Modal
   const [addingChildForParent, setAddingChildForParent] = useState<{ id: string; name: string } | null>(null);
   const [newChildName, setNewChildName] = useState('');
-  const [newChildBirthDate, setNewChildBirthDate] = useState('');
+  const [newChildGrade, setNewChildGrade] = useState('');
+  const [newChildLearningGoal, setNewChildLearningGoal] = useState('');
   const [newChildComment, setNewChildComment] = useState('');
   const [isSubmittingChild, setIsSubmittingChild] = useState(false);
 
@@ -81,13 +81,15 @@ export const Clients: React.FC = () => {
       setIsSubmittingChild(true);
       await api.createChild(addingChildForParent.id, {
         full_name: newChildName.trim(),
-        birth_date: newChildBirthDate || undefined,
+        grade: newChildGrade || undefined,
+        learning_goal: newChildLearningGoal.trim() || undefined,
         comment: newChildComment.trim() || undefined,
         status: ChildStatus.active,
       });
       setAddingChildForParent(null);
       setNewChildName('');
-      setNewChildBirthDate('');
+      setNewChildGrade('');
+      setNewChildLearningGoal('');
       setNewChildComment('');
       await loadData();
     } catch (err: any) {
@@ -197,12 +199,6 @@ export const Clients: React.FC = () => {
                             <span className="text-stone-400">({parent.secondary_phone})</span>
                           )}
                         </span>
-                        {parent.address && (
-                          <span className="inline-flex items-center gap-1 text-stone-500">
-                            <MapPin className="w-3.5 h-3.5 text-stone-400" />
-                            {parent.address}
-                          </span>
-                        )}
                         {parent.comment && (
                           <span className="italic text-stone-500">«{parent.comment}»</span>
                         )}
@@ -266,9 +262,14 @@ export const Clients: React.FC = () => {
                                 <span className="font-bold text-xs text-stone-900">
                                   {child.full_name}
                                 </span>
-                                {child.birth_date && (
+                                {child.grade && (
                                   <span className="text-[11px] text-stone-500">
-                                    (Д.р. {new Date(child.birth_date).toLocaleDateString('ru-RU')})
+                                    {child.grade === 'дошкольник' ? 'дошкольник' : `${child.grade} класс`}
+                                  </span>
+                                )}
+                                {child.learning_goal && (
+                                  <span className="text-[11px] text-stone-500 italic">
+                                    — {child.learning_goal}
                                   </span>
                                 )}
                                 <StatusBadge status={child.status} />
@@ -395,25 +396,45 @@ export const Clients: React.FC = () => {
 
           <div>
             <label className="block text-xs font-semibold text-stone-700 mb-1">
-              Дата рождения
+              Класс
+            </label>
+            <select
+              value={newChildGrade}
+              onChange={(e) => setNewChildGrade(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
+            >
+              <option value="">Не указан</option>
+              <option value="дошкольник">дошкольник</option>
+              {Array.from({ length: 11 }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={String(n)}>
+                  {n} класс
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-stone-700 mb-1">
+              Цель обучения
             </label>
             <input
-              type="date"
-              value={newChildBirthDate}
-              onChange={(e) => setNewChildBirthDate(e.target.value)}
+              type="text"
+              value={newChildLearningGoal}
+              onChange={(e) => setNewChildLearningGoal(e.target.value)}
+              placeholder="Подготовка к ОГЭ, общее развитие..."
               className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
             />
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-stone-700 mb-1">
-              Примечание (класс, особенности)
+              Примечание
             </label>
             <input
               type="text"
               value={newChildComment}
               onChange={(e) => setNewChildComment(e.target.value)}
-              placeholder="9 класс, подготовка к экзамену..."
+              placeholder="Особенности, пожелания..."
               className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
             />
           </div>

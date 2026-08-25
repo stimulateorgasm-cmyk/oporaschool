@@ -8,6 +8,8 @@ from app.models.enums import ChildStatus, ClientStatus
 class ChildBase(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=200)
     birth_date: Optional[date] = None
+    grade: Optional[str] = Field(None, max_length=20, description="Класс: 1-11 или «дошкольник»")
+    learning_goal: Optional[str] = Field(None, description="Цель обучения")
     comment: Optional[str] = None
     status: ChildStatus = ChildStatus.active
 
@@ -19,6 +21,8 @@ class ChildCreate(ChildBase):
 class ChildUpdate(BaseModel):
     full_name: Optional[str] = None
     birth_date: Optional[date] = None
+    grade: Optional[str] = Field(None, max_length=20)
+    learning_goal: Optional[str] = None
     comment: Optional[str] = None
     status: Optional[ChildStatus] = None
 
@@ -34,7 +38,6 @@ class ChildRead(ChildBase):
 
 class ParentBase(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=200)
-    address: Optional[str] = None
     phone: str = Field(..., min_length=10, max_length=20)
     secondary_phone: Optional[str] = None
     comment: Optional[str] = None
@@ -47,7 +50,6 @@ class ParentCreate(ParentBase):
 
 class ParentUpdate(BaseModel):
     full_name: Optional[str] = None
-    address: Optional[str] = None
     phone: Optional[str] = None
     secondary_phone: Optional[str] = None
     comment: Optional[str] = None

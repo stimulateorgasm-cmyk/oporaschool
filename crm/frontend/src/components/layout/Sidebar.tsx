@@ -10,6 +10,7 @@ import {
   BadgeRussianRuble,
   ShieldCheck,
   Building2,
+  Compass,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -26,6 +27,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
       to: '/dashboard',
       label: 'Главная',
       icon: LayoutDashboard,
+      roles: ['manager', 'administrator', 'teacher'],
+    },
+    {
+      to: '/directions',
+      label: 'Направления',
+      icon: Compass,
       roles: ['manager', 'administrator', 'teacher'],
     },
     {

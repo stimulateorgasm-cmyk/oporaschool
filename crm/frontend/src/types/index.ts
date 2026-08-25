@@ -149,6 +149,8 @@ export interface LoginRequest {
 export interface ChildCreate {
   full_name: string;
   birth_date?: string;
+  grade?: string;
+  learning_goal?: string;
   comment?: string;
   status?: ChildStatus;
 }
@@ -156,6 +158,8 @@ export interface ChildCreate {
 export interface ChildUpdate {
   full_name?: string;
   birth_date?: string;
+  grade?: string;
+  learning_goal?: string;
   comment?: string;
   status?: ChildStatus;
 }
@@ -165,6 +169,8 @@ export interface ChildRead {
   parent_id: string;
   full_name: string;
   birth_date?: string;
+  grade?: string;
+  learning_goal?: string;
   comment?: string;
   status: ChildStatus;
   created_at: string;
@@ -173,7 +179,6 @@ export interface ChildRead {
 
 export interface ParentCreate {
   full_name: string;
-  address?: string;
   phone: string;
   secondary_phone?: string;
   comment?: string;
@@ -183,7 +188,6 @@ export interface ParentCreate {
 
 export interface ParentUpdate {
   full_name?: string;
-  address?: string;
   phone?: string;
   secondary_phone?: string;
   comment?: string;
@@ -193,7 +197,6 @@ export interface ParentUpdate {
 export interface ParentRead {
   id: string;
   full_name: string;
-  address?: string;
   phone: string;
   secondary_phone?: string;
   comment?: string;
@@ -211,6 +214,22 @@ export interface SubjectRead {
   description?: string;
   is_active: boolean;
   created_at: string;
+  teachers_count?: number;
+  children_count?: number;
+}
+
+export interface SubjectCreate {
+  name: string;
+  code?: string;
+  description?: string;
+  is_active?: boolean;
+}
+
+export interface SubjectUpdate {
+  name?: string;
+  code?: string;
+  description?: string;
+  is_active?: boolean;
 }
 
 export interface TeacherRateCreate {
@@ -307,10 +326,13 @@ export interface RoomCreate {
 }
 
 export interface LessonCreate {
-  child_subject_id: string;
+  child_id: string;
+  subject_id: string;
+  teacher_id: string;
   room_id: string;
   starts_at: string;
   ends_at: string;
+  attachment_id: string;
   comment?: string;
 }
 
@@ -365,8 +387,20 @@ export interface LessonRead {
   client_price: number | string;
   teacher_rate_snapshot?: number | string;
   comment?: string;
+  attachment_id?: string;
   created_at: string;
   history: LessonHistoryRead[];
+}
+
+// ---------------- ATTACHMENTS ----------------
+export interface AttachmentRead {
+  id: string;
+  owner_type: string;
+  owner_id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes?: number;
+  created_at: string;
 }
 
 // ---------------- FINANCE & BALANCE ----------------

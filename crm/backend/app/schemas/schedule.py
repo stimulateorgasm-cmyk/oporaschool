@@ -30,10 +30,13 @@ class RoomRead(RoomBase):
 
 
 class LessonCreate(BaseModel):
-    child_subject_id: uuid.UUID
+    child_id: uuid.UUID
+    subject_id: uuid.UUID
+    teacher_id: uuid.UUID
     room_id: uuid.UUID
     starts_at: datetime
     ends_at: datetime
+    attachment_id: uuid.UUID = Field(..., description="Обязательное вложение (скрин/документ)")
     comment: Optional[str] = None
 
 
@@ -92,6 +95,7 @@ class LessonRead(BaseModel):
     client_price: Decimal
     teacher_rate_snapshot: Optional[Decimal] = None
     comment: Optional[str] = None
+    attachment_id: Optional[uuid.UUID] = None
     created_at: datetime
     history: List[LessonHistoryRead] = []
 

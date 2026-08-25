@@ -1,46 +1,88 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Modal } from '../common/Modal';
-import { LessonCreate, RoomRead, ChildSubjectRead } from '../../types';
+import { api } from '../../api/client';
+import { ChildRead, ChildSubjectRead, LessonCreate, RoomRead } from '../../types';
+import { Paperclip } from 'lucide-react';
 
 interface LessonModalProps {
   isOpen: boolean;
   onClose: () => void;
-  rooms: RoomRead[];
+  children: ChildRead[];
   childSubjects: ChildSubjectRead[];
+  rooms: RoomRead[];
   onSubmit: (data: LessonCreate) => Promise<void>;
   defaultDate?: string;
-  defaultRoomId?: string;
 }
+
+// Вложение создаётся до занятия, поэтому для owner_id используем пустой UUID-заглушку:
+// реальная связь занятия с файлом идёт через lesson.attachment_id.
+const PLACEHOLDER_OWNER_ID = '00000000-0000-0000-0000-000000000000';
 
 export const LessonModal: React.FC<LessonModalProps> = ({
   isOpen,
   onClose,
-  rooms,
+  children,
   childSubjects,
+  rooms,
   onSubmit,
   defaultDate,
-  defaultRoomId,
 }) => {
   const today = defaultDate || new Date().toISOString().split('T')[0];
-  const [childSubjectId, setChildSubjectId] = useState(childSubjects[0]?.id || '');
-  const [roomId, setRoomId] = useState(defaultRoomId || rooms[0]?.id || '');
+
+  const [childId, setChildId] = useState('');
+  const [subjectId, setSubjectId] = useState('');
+  const [teacherId, setTeacherId] = useState('');
+  const [roomId, setRoomId] = useState(rooms[0]?.id || '');
   const [lessonDate, setLessonDate] = useState(today);
   const [startTime, setStartTime] = useState('14:00');
   const [endTime, setEndTime] = useState('15:00');
   const [comment, setComment] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Направления текущего ребёнка
+  const childDirections = useMemo(() => {
+    const map = new Map<string, string>();
+    childSubjects
+      .filter((cs) => cs.child_id === childId)
+      .forEach((cs) => map.set(cs.subject_id, cs.subject_name));
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [childSubjects, childId]);
+
+  // Педагоги выбранного направления (для текущего ребёнка)
+  const directionTeachers = useMemo(() => {
+    return childSubjects.filter(
+      (cs) => cs.child_id === childId && cs.subject_id === subjectId
+    );
+  }, [childSubjects, childId, subjectId]);
+
+  const handleChildChange = (id: string) => {
+    setChildId(id);
+    setSubjectId('');
+    setTeacherId('');
+  };
+
+  const handleSubjectChange = (id: string) => {
+    setSubjectId(id);
+    setTeacherId('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!childSubjectId || !roomId) {
-      setError('Выберите ученика/предмет и кабинет');
+    setError(null);
+
+    if (!childId || !subjectId || !teacherId || !roomId) {
+      setError('Заполните ученика, направление, педагога и кабинет');
+      return;
+    }
+    if (!file) {
+      setError('Прикрепите файл к занятию (обязательно)');
       return;
     }
 
     const startsAt = `${lessonDate}T${startTime}:00`;
     const endsAt = `${lessonDate}T${endTime}:00`;
-
     if (new Date(startsAt) >= new Date(endsAt)) {
       setError('Время окончания должно быть позже времени начала');
       return;
@@ -48,12 +90,17 @@ export const LessonModal: React.FC<LessonModalProps> = ({
 
     try {
       setIsSubmitting(true);
-      setError(null);
+      // 1. Загружаем файл и получаем attachment_id
+      const attachment = await api.uploadAttachment('lesson', PLACEHOLDER_OWNER_ID, file);
+      // 2. Создаём занятие с привязкой к вложению
       await onSubmit({
-        child_subject_id: childSubjectId,
+        child_id: childId,
+        subject_id: subjectId,
+        teacher_id: teacherId,
         room_id: roomId,
         starts_at: startsAt,
         ends_at: endsAt,
+        attachment_id: attachment.id,
         comment: comment.trim() || undefined,
       });
       onClose();
@@ -69,7 +116,7 @@ export const LessonModal: React.FC<LessonModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Назначить занятие в расписание"
-      subtitle="Проверка занятости кабинета и педагога"
+      subtitle="Ученик → направление → педагог → кабинет и время → файл"
       maxWidth="md"
     >
       <form onSubmit={handleSubmit} className="space-y-3.5">
@@ -79,26 +126,69 @@ export const LessonModal: React.FC<LessonModalProps> = ({
           </div>
         )}
 
+        {/* Шаг 1: Ребёнок */}
         <div>
           <label className="block text-xs font-semibold text-stone-700 mb-1">
-            Ученик и направление <span className="text-rose-500">*</span>
+            1. Ученик <span className="text-rose-500">*</span>
           </label>
           <select
-            value={childSubjectId}
-            onChange={(e) => setChildSubjectId(e.target.value)}
+            value={childId}
+            onChange={(e) => handleChildChange(e.target.value)}
             className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
           >
-            {childSubjects.map((cs) => (
-              <option key={cs.id} value={cs.id}>
-                {cs.subject_name} — {cs.teacher_name} (остаток {cs.balance_lessons} зан.)
+            <option value="">Выберите ученика</option>
+            {children.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.full_name}
               </option>
             ))}
           </select>
         </div>
 
+        {/* Шаг 2: Направление */}
         <div>
           <label className="block text-xs font-semibold text-stone-700 mb-1">
-            Кабинет центра <span className="text-rose-500">*</span>
+            2. Направление <span className="text-rose-500">*</span>
+          </label>
+          <select
+            value={subjectId}
+            onChange={(e) => handleSubjectChange(e.target.value)}
+            disabled={!childId}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white disabled:bg-stone-50 disabled:text-stone-400"
+          >
+            <option value="">{childId ? 'Выберите направление' : 'Сначала выберите ученика'}</option>
+            {childDirections.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Шаг 3: Педагог */}
+        <div>
+          <label className="block text-xs font-semibold text-stone-700 mb-1">
+            3. Педагог <span className="text-rose-500">*</span>
+          </label>
+          <select
+            value={teacherId}
+            onChange={(e) => setTeacherId(e.target.value)}
+            disabled={!subjectId}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white disabled:bg-stone-50 disabled:text-stone-400"
+          >
+            <option value="">{subjectId ? 'Выберите педагога' : 'Сначала выберите направление'}</option>
+            {directionTeachers.map((cs) => (
+              <option key={cs.teacher_id} value={cs.teacher_id}>
+                {cs.teacher_name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Шаг 4: Кабинет */}
+        <div>
+          <label className="block text-xs font-semibold text-stone-700 mb-1">
+            4. Кабинет <span className="text-rose-500">*</span>
           </label>
           <select
             value={roomId}
@@ -113,11 +203,10 @@ export const LessonModal: React.FC<LessonModalProps> = ({
           </select>
         </div>
 
+        {/* Дата и время */}
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <label className="block text-xs font-semibold text-stone-700 mb-1">
-              Дата
-            </label>
+            <label className="block text-xs font-semibold text-stone-700 mb-1">Дата</label>
             <input
               type="date"
               required
@@ -126,11 +215,8 @@ export const LessonModal: React.FC<LessonModalProps> = ({
               className="w-full px-2.5 py-2 text-xs rounded-lg border border-stone-200 bg-white"
             />
           </div>
-
           <div>
-            <label className="block text-xs font-semibold text-stone-700 mb-1">
-              Начало
-            </label>
+            <label className="block text-xs font-semibold text-stone-700 mb-1">Начало</label>
             <input
               type="time"
               required
@@ -139,11 +225,8 @@ export const LessonModal: React.FC<LessonModalProps> = ({
               className="w-full px-2.5 py-2 text-xs rounded-lg border border-stone-200 bg-white"
             />
           </div>
-
           <div>
-            <label className="block text-xs font-semibold text-stone-700 mb-1">
-              Конец
-            </label>
+            <label className="block text-xs font-semibold text-stone-700 mb-1">Конец</label>
             <input
               type="time"
               required
@@ -151,6 +234,36 @@ export const LessonModal: React.FC<LessonModalProps> = ({
               onChange={(e) => setEndTime(e.target.value)}
               className="w-full px-2.5 py-2 text-xs rounded-lg border border-stone-200 bg-white"
             />
+          </div>
+        </div>
+
+        {/* Шаг 5: Файл (обязательно) */}
+        <div>
+          <label className="block text-xs font-semibold text-stone-700 mb-1">
+            5. Вложение (PDF / JPEG / PNG / WORD) <span className="text-rose-500">*</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <label className="flex-1 inline-flex items-center gap-2 px-3 py-2 text-xs rounded-lg border border-stone-200 bg-white cursor-pointer hover:bg-stone-50">
+              <Paperclip className="w-3.5 h-3.5 text-stone-400" />
+              <span className={file ? 'text-stone-800 truncate' : 'text-stone-400'}>
+                {file ? file.name : 'Выберите файл...'}
+              </span>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,application/pdf,image/jpeg,image/png,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                className="hidden"
+              />
+            </label>
+            {file && (
+              <button
+                type="button"
+                onClick={() => setFile(null)}
+                className="text-xs text-stone-500 hover:text-rose-600"
+              >
+                Сбросить
+              </button>
+            )}
           </div>
         </div>
 

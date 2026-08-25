@@ -13,18 +13,17 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [secondaryPhone, setSecondaryPhone] = useState('');
-  const [address, setAddress] = useState('');
   const [comment, setComment] = useState('');
   const [status, setStatus] = useState<ClientStatus>(ClientStatus.active);
-  const [children, setChildren] = useState<Array<{ full_name: string; birth_date?: string; comment?: string }>>([
-    { full_name: '', birth_date: '', comment: '' },
+  const [children, setChildren] = useState<Array<{ full_name: string; grade?: string; learning_goal?: string; comment?: string }>>([
+    { full_name: '', grade: '', learning_goal: '', comment: '' },
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleAddChild = () => {
     if (children.length >= 5) return;
-    setChildren([...children, { full_name: '', birth_date: '', comment: '' }]);
+    setChildren([...children, { full_name: '', grade: '', learning_goal: '', comment: '' }]);
   };
 
   const handleRemoveChild = (index: number) => {
@@ -49,7 +48,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
       .filter((c) => c.full_name.trim().length > 0)
       .map((c) => ({
         full_name: c.full_name.trim(),
-        birth_date: c.birth_date || undefined,
+        grade: c.grade || undefined,
+        learning_goal: c.learning_goal || undefined,
         comment: c.comment || undefined,
       }));
 
@@ -59,7 +59,6 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
         full_name: fullName.trim(),
         phone: phone.trim(),
         secondary_phone: secondaryPhone.trim() || undefined,
-        address: address.trim() || undefined,
         comment: comment.trim() || undefined,
         status,
         children: validChildren.length > 0 ? validChildren : undefined,
@@ -68,9 +67,8 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
       setFullName('');
       setPhone('');
       setSecondaryPhone('');
-      setAddress('');
       setComment('');
-      setChildren([{ full_name: '', birth_date: '', comment: '' }]);
+      setChildren([{ full_name: '', grade: '', learning_goal: '', comment: '' }]);
       onClose();
     } catch (err: any) {
       setError(err.message || 'Не удалось сохранить клиента');
@@ -137,17 +135,6 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
           </div>
 
           <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-stone-700 mb-1">Адрес</label>
-            <input
-              type="text"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="ст. Северская, ул. Ленина, д. 10"
-              className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 focus:outline-hidden focus:ring-2 focus:ring-amber-500/20 focus:border-amber-600"
-            />
-          </div>
-
-          <div className="md:col-span-2">
             <label className="block text-xs font-semibold text-stone-700 mb-1">Комментарий</label>
             <textarea
               rows={2}
@@ -203,12 +190,31 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
                   </div>
                   <div>
                     <label className="block text-[11px] font-medium text-stone-600 mb-0.5">
-                      Дата рождения
+                      Класс
+                    </label>
+                    <select
+                      value={child.grade}
+                      onChange={(e) => handleChildChange(idx, 'grade', e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs rounded border border-stone-200 bg-white"
+                    >
+                      <option value="">Не указан</option>
+                      <option value="дошкольник">Дошкольник</option>
+                      {Array.from({ length: 11 }, (_, i) => i + 1).map((g) => (
+                        <option key={g} value={String(g)}>
+                          {g} класс
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-medium text-stone-600 mb-0.5">
+                      Цель обучения
                     </label>
                     <input
-                      type="date"
-                      value={child.birth_date}
-                      onChange={(e) => handleChildChange(idx, 'birth_date', e.target.value)}
+                      type="text"
+                      value={child.learning_goal}
+                      onChange={(e) => handleChildChange(idx, 'learning_goal', e.target.value)}
+                      placeholder="Например: подготовка к ОГЭ по математике"
                       className="w-full px-2.5 py-1.5 text-xs rounded border border-stone-200 bg-white"
                     />
                   </div>
@@ -217,7 +223,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
                       type="text"
                       value={child.comment}
                       onChange={(e) => handleChildChange(idx, 'comment', e.target.value)}
-                      placeholder="Класс, особенности, цели обучения..."
+                      placeholder="Комментарий (особенности, примечания)..."
                       className="w-full px-2.5 py-1.5 text-xs rounded border border-stone-200 bg-white"
                     />
                   </div>

@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.academic import ChildSubject
+from app.models.attachment import Attachment
 from app.models.enums import AttendanceStatus, LessonPaymentStatus, LessonStatus
 from app.models.schedule import Lesson, LessonHistory, Room
 from app.services.audit_service import AuditService
@@ -81,35 +82,56 @@ class ScheduleService:
     @staticmethod
     async def create_lesson(
         db: AsyncSession,
-        child_subject_id: uuid.UUID,
+        child_id: uuid.UUID,
+        subject_id: uuid.UUID,
+        teacher_id: uuid.UUID,
         room_id: uuid.UUID,
         starts_at: datetime,
         ends_at: datetime,
+        attachment_id: uuid.UUID,
         user_id: Optional[uuid.UUID] = None,
         comment: Optional[str] = None,
     ) -> Lesson:
-        cs = await db.get(ChildSubject, child_subject_id)
-        if not cs or not cs.is_active:
+        # 1. Обязательное вложение
+        attachment = await db.get(Attachment, attachment_id)
+        if not attachment or attachment.deleted_at:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Активная привязка предмета ребенка не найдена",
+                detail="Вложение не найдено. Прикрепите файл к занятию.",
             )
 
-        # Validate conflicts
+        # 2. Активная привязка «ребёнок × направление × педагог» задаёт цену и формат
+        cs = (
+            await db.execute(
+                select(ChildSubject).where(
+                    ChildSubject.child_id == child_id,
+                    ChildSubject.subject_id == subject_id,
+                    ChildSubject.teacher_id == teacher_id,
+                    ChildSubject.is_active == True,
+                )
+            )
+        ).scalar_one_or_none()
+        if not cs:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="У ребёнка нет активной привязки к выбранному направлению и педагогу",
+            )
+
+        # 3. Проверка конфликтов по кабинету / педагогу / ребёнку
         await ScheduleService.validate_conflicts(
             db=db,
             starts_at=starts_at,
             ends_at=ends_at,
             room_id=room_id,
-            teacher_id=cs.teacher_id,
-            child_id=cs.child_id,
+            teacher_id=teacher_id,
+            child_id=child_id,
         )
 
         lesson = Lesson(
             child_subject_id=cs.id,
-            child_id=cs.child_id,
-            subject_id=cs.subject_id,
-            teacher_id=cs.teacher_id,
+            child_id=child_id,
+            subject_id=subject_id,
+            teacher_id=teacher_id,
             room_id=room_id,
             starts_at=starts_at,
             ends_at=ends_at,
@@ -118,6 +140,7 @@ class ScheduleService:
             payment_status=LessonPaymentStatus.unpaid,
             lesson_format=cs.lesson_format,
             client_price=cs.lesson_price,
+            attachment_id=attachment_id,
             comment=comment,
             created_by=user_id,
             updated_by=user_id,
@@ -135,8 +158,10 @@ class ScheduleService:
                 "starts_at": starts_at.isoformat(),
                 "ends_at": ends_at.isoformat(),
                 "room_id": str(room_id),
-                "teacher_id": str(cs.teacher_id),
-                "child_id": str(cs.child_id),
+                "teacher_id": str(teacher_id),
+                "child_id": str(child_id),
+                "subject_id": str(subject_id),
+                "attachment_id": str(attachment_id),
             },
         )
         return lesson

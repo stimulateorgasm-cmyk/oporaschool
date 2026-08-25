@@ -110,6 +110,9 @@ class Lesson(Base):
         Numeric(12, 2), nullable=True
     )
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    attachment_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("attachments.id", ondelete="SET NULL"), nullable=True
+    )
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

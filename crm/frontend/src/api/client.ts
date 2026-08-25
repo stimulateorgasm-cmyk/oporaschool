@@ -1,4 +1,5 @@
 import {
+  AttachmentRead,
   AuditLogRead,
   BalanceCorrectionRequest,
   BalanceReportItem,
@@ -21,7 +22,9 @@ import {
   RoomCreate,
   RoomRead,
   SubjectBalanceSummary,
+  SubjectCreate,
   SubjectRead,
+  SubjectUpdate,
   TeacherCreate,
   TeacherRateCreate,
   TeacherRateRead,
@@ -191,7 +194,6 @@ class ApiClient {
       {
         id: 'p-1',
         full_name: 'Иванова Марина Алексеевна',
-        address: 'ст. Северская, ул. Ленина, д. 45',
         phone: '+79184567890',
         secondary_phone: '+79184567891',
         comment: 'Оплата всегда вовремя',
@@ -203,8 +205,9 @@ class ApiClient {
             id: 'c-1',
             parent_id: 'p-1',
             full_name: 'Иванов Артем Дмитриевич',
-            birth_date: '2012-05-14',
-            comment: '7 класс, готовимся к олимпиадам',
+            grade: '7',
+            learning_goal: 'Подготовка к олимпиадам',
+            comment: 'Сильный ученик',
             status: ChildStatus.active,
             created_at: new Date().toISOString(),
             active_subjects_count: 2,
@@ -214,7 +217,6 @@ class ApiClient {
       {
         id: 'p-2',
         full_name: 'Петров Сергей Михайлович',
-        address: 'ст. Северская, ул. Казачья, д. 12',
         phone: '+79185556677',
         comment: 'Предупреждать об изменениях за сутки',
         status: ClientStatus.active,
@@ -225,8 +227,9 @@ class ApiClient {
             id: 'c-2',
             parent_id: 'p-2',
             full_name: 'Петрова София Сергеевна',
-            birth_date: '2018-09-20',
-            comment: 'Подготовка к 1 классу',
+            grade: 'дошкольник',
+            learning_goal: 'Подготовка к школе',
+            comment: '',
             status: ChildStatus.active,
             created_at: new Date().toISOString(),
             active_subjects_count: 1,
@@ -236,7 +239,6 @@ class ApiClient {
       {
         id: 'p-3',
         full_name: 'Ковалева Татьяна Юрьевна',
-        address: 'ст. Северская, ул. Мира, д. 88',
         phone: '+79189990011',
         comment: 'Нужен перерасчет за больничный',
         status: ClientStatus.active,
@@ -247,8 +249,9 @@ class ApiClient {
             id: 'c-3',
             parent_id: 'p-3',
             full_name: 'Ковалев Максим',
-            birth_date: '2015-03-10',
-            comment: 'Коррекция речи',
+            grade: '4',
+            learning_goal: 'Коррекция речи',
+            comment: '',
             status: ChildStatus.active,
             created_at: new Date().toISOString(),
             active_subjects_count: 1,
@@ -608,6 +611,10 @@ class ApiClient {
     }
 
     // Clients
+    if (endpoint.includes('/clients/child-subjects') && method === 'GET') {
+      return this.demoState.childSubjects as T;
+    }
+
     if (endpoint.startsWith('/clients') && method === 'GET') {
       return this.demoState.parents as T;
     }
@@ -619,7 +626,8 @@ class ApiClient {
           id: `c-${Date.now()}`,
           parent_id: parentId,
           full_name: body.full_name,
-          birth_date: body.birth_date,
+          grade: body.grade,
+          learning_goal: body.learning_goal,
           comment: body.comment,
           status: body.status || ChildStatus.active,
           created_at: new Date().toISOString(),
@@ -655,7 +663,6 @@ class ApiClient {
       const newParent: ParentRead = {
         id: `p-${Date.now()}`,
         full_name: body.full_name,
-        address: body.address,
         phone: body.phone,
         secondary_phone: body.secondary_phone,
         comment: body.comment,
@@ -665,7 +672,8 @@ class ApiClient {
           id: `c-${Date.now()}-${Math.random()}`,
           parent_id: `p-${Date.now()}`,
           full_name: ch.full_name,
-          birth_date: ch.birth_date,
+          grade: ch.grade,
+          learning_goal: ch.learning_goal,
           comment: ch.comment,
           status: ch.status || ChildStatus.active,
           created_at: new Date().toISOString(),
@@ -1039,6 +1047,59 @@ class ApiClient {
     return this.request<SubjectRead[]>('/academic/subjects');
   }
 
+  public async createSubject(data: SubjectCreate): Promise<SubjectRead> {
+    return this.request<SubjectRead>('/academic/subjects', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async updateSubject(subjectId: string, data: SubjectUpdate): Promise<SubjectRead> {
+    return this.request<SubjectRead>(`/academic/subjects/${subjectId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async getSubjectTeachers(subjectId: string): Promise<{ id: string; full_name: string; phone: string; status: string }[]> {
+    return this.request(`/academic/subjects/${subjectId}/teachers`);
+  }
+
+  public async getSubjectChildren(subjectId: string): Promise<{ id: string; full_name: string; grade?: string; learning_goal?: string; teacher_name?: string }[]> {
+    return this.request(`/academic/subjects/${subjectId}/children`);
+  }
+
+  // Вложения
+  public async getAttachments(ownerType: string, ownerId: string): Promise<AttachmentRead[]> {
+    return this.request<AttachmentRead[]>(`/attachments?owner_type=${encodeURIComponent(ownerType)}&owner_id=${encodeURIComponent(ownerId)}`);
+  }
+
+  public async deleteAttachment(attachmentId: string): Promise<{ status: string; message: string }> {
+    return this.request(`/attachments/${attachmentId}`, { method: 'DELETE' });
+  }
+
+  public async uploadAttachment(ownerType: string, ownerId: string, file: File): Promise<AttachmentRead> {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('owner_type', ownerType);
+    form.append('owner_id', ownerId);
+
+    const headers: Record<string, string> = {};
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+
+    const response = await fetch(`${API_BASE}/attachments`, { method: 'POST', headers, body: form });
+    if (response.status === 401) {
+      this.setToken(null);
+      if (this.onUnauthorizedCallback) this.onUnauthorizedCallback();
+      throw new Error('Сессия истекла. Пожалуйста, авторизуйтесь заново.');
+    }
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+      throw new Error(errorBody.detail || `Ошибка сервера: ${response.status}`);
+    }
+    return await response.json();
+  }
+
   public async createChildSubject(data: ChildSubjectCreate): Promise<ChildSubjectRead> {
     return this.request<ChildSubjectRead>('/clients/child-subjects', {
       method: 'POST',
@@ -1048,6 +1109,11 @@ class ApiClient {
 
   public async attachSubjectToChild(data: ChildSubjectCreate): Promise<ChildSubjectRead> {
     return this.createChildSubject(data);
+  }
+
+  public async getChildSubjects(childId?: string): Promise<ChildSubjectRead[]> {
+    const qs = childId ? `?child_id=${encodeURIComponent(childId)}` : '';
+    return this.request<ChildSubjectRead[]>(`/clients/child-subjects${qs}`);
   }
 
   // Teachers

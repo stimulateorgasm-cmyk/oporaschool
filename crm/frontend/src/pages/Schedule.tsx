@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { LessonRead, RoomRead, TeacherRead, LessonStatus, AttendanceStatus } from '../types';
+import { LessonRead, RoomRead, TeacherRead, ChildRead, ChildSubjectRead } from '../types';
+import { useAuth } from '../context/AuthContext';
 import { StatusBadge } from '../components/common/StatusBadge';
 import {
   Calendar as CalendarIcon,
@@ -19,12 +20,15 @@ import { AttendanceModal } from '../components/schedule/AttendanceModal';
 import { LessonMoveModal } from '../components/schedule/LessonMoveModal';
 
 export const Schedule: React.FC = () => {
+  const { isAdmin } = useAuth();
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [teacherFilter, setTeacherFilter] = useState<string>('all');
   const [roomFilter, setRoomFilter] = useState<string>('all');
   const [lessons, setLessons] = useState<LessonRead[]>([]);
   const [rooms, setRooms] = useState<RoomRead[]>([]);
   const [teachers, setTeachers] = useState<TeacherRead[]>([]);
+  const [children, setChildren] = useState<ChildRead[]>([]);
+  const [childSubjects, setChildSubjects] = useState<ChildSubjectRead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Modals
@@ -59,6 +63,23 @@ export const Schedule: React.FC = () => {
     loadData();
   }, [selectedDate, teacherFilter, roomFilter]);
 
+  // Данные для формы создания занятия (ученики + привязки) — только для руководителя/администратора
+  useEffect(() => {
+    if (!isAdmin) return;
+    (async () => {
+      try {
+        const [clients, cs] = await Promise.all([
+          api.getClients(),
+          api.getChildSubjects(),
+        ]);
+        setChildren(clients.flatMap((p) => p.children));
+        setChildSubjects(cs);
+      } catch (err) {
+        console.error('Failed to load lesson form data', err);
+      }
+    })();
+  }, [isAdmin]);
+
   const changeDate = (days: number) => {
     const current = new Date(selectedDate);
     current.setDate(current.getDate() + days);
@@ -92,14 +113,16 @@ export const Schedule: React.FC = () => {
           </p>
         </div>
 
-        <button
-          id="btn-create-lesson-schedule"
-          onClick={() => setIsLessonModalOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 shadow-xs transition-colors self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Назначить занятие</span>
-        </button>
+        {isAdmin && (
+          <button
+            id="btn-create-lesson-schedule"
+            onClick={() => setIsLessonModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 shadow-xs transition-colors self-start sm:self-auto"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Назначить занятие</span>
+          </button>
+        )}
       </div>
 
       {/* Date Navigation & Filters Toolbar */}
@@ -290,24 +313,9 @@ export const Schedule: React.FC = () => {
         isOpen={isLessonModalOpen}
         onClose={() => setIsLessonModalOpen(false)}
         rooms={rooms}
+        children={children}
+        childSubjects={childSubjects}
         defaultDate={selectedDate}
-        childSubjects={[
-          {
-            id: 'cs-1',
-            child_id: 'c-1',
-            subject_id: 'sub-1',
-            subject_name: 'Математика (ОГЭ/ЕГЭ)',
-            teacher_id: 't-1',
-            teacher_name: 'Елена Викторовна Смирнова',
-            lesson_format: 'individual' as any,
-            lesson_price: 1200,
-            default_duration_minutes: 60,
-            start_date: '2024-01-15',
-            is_active: true,
-            balance_lessons: 4,
-            completed_lessons: 12,
-          },
-        ]}
         onSubmit={async (data) => {
           await api.createLesson(data);
           await loadData();

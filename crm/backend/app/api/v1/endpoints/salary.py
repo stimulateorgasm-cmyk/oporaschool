@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
-from app.core.rbac import get_current_user, require_roles
+from app.core.rbac import require_roles
 from app.models.academic import Teacher
 from app.models.auth import User
 from app.models.enums import SalaryPaymentStatus
@@ -22,21 +22,34 @@ from app.services.salary_service import SalaryService
 router = APIRouter(prefix="/salary", tags=["Зарплата педагогов"])
 
 
+def _is_teacher_only(user: User) -> bool:
+    roles = [r.code for r in user.roles]
+    return "teacher" in roles and "manager" not in roles and "administrator" not in roles
+
+
+async def _current_teacher_id(db: AsyncSession, user: User) -> Optional[uuid.UUID]:
+    """ID педагога для пользователя с единственной ролью teacher (иначе None)."""
+    if not _is_teacher_only(user):
+        return None
+    return (
+        await db.execute(select(Teacher.id).where(Teacher.user_id == user.id))
+    ).scalar_one_or_none()
+
+
 @router.get("/summary/{teacher_id}", response_model=TeacherSalarySummary, summary="Финансовая сводка по педагогу")
 async def get_teacher_salary_summary(
     teacher_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(["manager", "teacher"])),
 ):
     teacher = await db.get(Teacher, teacher_id)
     if not teacher or teacher.deleted_at:
         raise HTTPException(status_code=404, detail="Педагог не найден")
 
-    # If teacher role, verify ownership
-    user_roles = [r.code for r in current_user.roles]
-    if "teacher" in user_roles and "manager" not in user_roles and "administrator" not in user_roles:
-        if teacher.user_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Доступ только к собственному балансу")
+    # Педагог видит только собственный баланс
+    own_id = await _current_teacher_id(db, current_user)
+    if own_id and teacher_id != own_id:
+        raise HTTPException(status_code=403, detail="Доступ только к собственному балансу")
 
     accrued, paid, debt, overpayment = await SalaryService.calculate_teacher_balance(
         db, teacher_id
@@ -101,7 +114,7 @@ async def get_teacher_salary_summary(
 @router.get("/summary", response_model=List[TeacherSalarySummary], summary="Сводка по всем педагогам")
 async def get_all_salary_summaries(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(["manager", "teacher"])),
 ):
     teachers = (
         await db.execute(
@@ -110,6 +123,11 @@ async def get_all_salary_summaries(
             .order_by(Teacher.full_name)
         )
     ).scalars().all()
+
+    # Педагог видит только себя
+    own_id = await _current_teacher_id(db, current_user)
+    if own_id:
+        teachers = [t for t in teachers if t.id == own_id]
 
     summaries = []
     for teacher in teachers:
@@ -135,8 +153,14 @@ async def get_all_salary_summaries(
 async def get_salary_accruals(
     teacher_id: Optional[uuid.UUID] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(["manager", "teacher"])),
 ):
+    own_id = await _current_teacher_id(db, current_user)
+    if own_id:
+        if teacher_id and teacher_id != own_id:
+            raise HTTPException(status_code=403, detail="Доступ только к собственным начислениям")
+        teacher_id = own_id
+
     stmt = (
         select(TeacherSalaryAccrual)
         .options(
@@ -171,8 +195,14 @@ async def get_salary_accruals(
 async def get_salary_payments(
     teacher_id: Optional[uuid.UUID] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(["manager", "teacher"])),
 ):
+    own_id = await _current_teacher_id(db, current_user)
+    if own_id:
+        if teacher_id and teacher_id != own_id:
+            raise HTTPException(status_code=403, detail="Доступ только к собственным выплатам")
+        teacher_id = own_id
+
     stmt = (
         select(TeacherSalaryPayment)
         .options(selectinload(TeacherSalaryPayment.teacher))

@@ -26,6 +26,35 @@ from app.services.schedule_service import ScheduleService
 router = APIRouter(prefix="/schedule", tags=["Расписание и Кабинеты"])
 
 
+def _build_lesson_read(l: Lesson) -> LessonRead:
+    """Собирает LessonRead из ORM-объекта (связи child/subject/teacher/room должны быть загружены)."""
+    return LessonRead(
+        id=l.id,
+        child_subject_id=l.child_subject_id,
+        child_id=l.child_id,
+        child_name=l.child.full_name,
+        parent_id=l.child.parent_id if l.child else None,
+        subject_id=l.subject_id,
+        subject_name=l.subject.name,
+        teacher_id=l.teacher_id,
+        teacher_name=l.teacher.full_name,
+        room_id=l.room_id,
+        room_name=l.room.name,
+        starts_at=l.starts_at,
+        ends_at=l.ends_at,
+        status=l.status,
+        attendance_status=l.attendance_status,
+        payment_status=l.payment_status,
+        lesson_format=l.lesson_format,
+        client_price=l.client_price,
+        teacher_rate_snapshot=l.teacher_rate_snapshot,
+        comment=l.comment,
+        attachment_id=l.attachment_id,
+        created_at=l.created_at,
+        history=[],
+    )
+
+
 @router.get("/rooms", response_model=List[RoomRead], summary="Список кабинетов")
 async def get_rooms(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Room).where(Room.is_active == True).order_by(Room.number))
@@ -95,33 +124,7 @@ async def get_lessons(
     result = await db.execute(query)
     lessons = result.scalars().all()
 
-    return [
-        LessonRead(
-            id=l.id,
-            child_subject_id=l.child_subject_id,
-            child_id=l.child_id,
-            child_name=l.child.full_name,
-            parent_id=l.child.parent_id if l.child else None,
-            subject_id=l.subject_id,
-            subject_name=l.subject.name,
-            teacher_id=l.teacher_id,
-            teacher_name=l.teacher.full_name,
-            room_id=l.room_id,
-            room_name=l.room.name,
-            starts_at=l.starts_at,
-            ends_at=l.ends_at,
-            status=l.status,
-            attendance_status=l.attendance_status,
-            payment_status=l.payment_status,
-            lesson_format=l.lesson_format,
-            client_price=l.client_price,
-            teacher_rate_snapshot=l.teacher_rate_snapshot,
-            comment=l.comment,
-            created_at=l.created_at,
-            history=[],
-        )
-        for l in lessons
-    ]
+    return [_build_lesson_read(l) for l in lessons]
 
 
 @router.post("/lessons", response_model=LessonRead, summary="Создание занятия (с защитой от конфликтов)")
@@ -132,16 +135,31 @@ async def create_lesson(
 ):
     lesson = await ScheduleService.create_lesson(
         db=db,
-        child_subject_id=data.child_subject_id,
+        child_id=data.child_id,
+        subject_id=data.subject_id,
+        teacher_id=data.teacher_id,
         room_id=data.room_id,
         starts_at=data.starts_at,
         ends_at=data.ends_at,
+        attachment_id=data.attachment_id,
         user_id=current_user.id,
         comment=data.comment,
     )
     await db.commit()
-    await db.refresh(lesson)
-    return await get_lessons(from_date=lesson.starts_at, to_date=lesson.ends_at, child_id=lesson.child_id, db=db, current_user=current_user).then(lambda l: l[0]) if False else lesson
+
+    stmt = (
+        select(Lesson)
+        .where(Lesson.id == lesson.id)
+        .options(
+            selectinload(Lesson.child),
+            selectinload(Lesson.subject),
+            selectinload(Lesson.teacher),
+            selectinload(Lesson.room),
+            selectinload(Lesson.history),
+        )
+    )
+    lesson_loaded = (await db.execute(stmt)).scalar_one()
+    return _build_lesson_read(lesson_loaded)
 
 
 @router.post("/lessons/{lesson_id}/move", summary="Перенос занятия")

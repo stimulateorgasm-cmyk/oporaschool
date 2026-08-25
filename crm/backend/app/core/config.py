@@ -25,6 +25,17 @@ class Settings(BaseSettings):
     DEFAULT_LESSON_DURATION_MINUTES: int = 60
     TIMEZONE: str = "Europe/Moscow"
 
+    # Files (локальный диск — данные не покидают сервер)
+    UPLOAD_DIR: str = "/opt/opora-crm/uploads"
+    MAX_UPLOAD_SIZE_MB: int = 20
+    ALLOWED_ATTACHMENT_MIME: List[str] = [
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]
+
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost:3000",

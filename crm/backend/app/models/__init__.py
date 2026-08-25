@@ -4,6 +4,7 @@ from app.models.academic import (
     Teacher,
     TeacherSubject,
 )
+from app.models.attachment import Attachment
 from app.models.auth import (
     Permission,
     RefreshToken,
@@ -73,6 +74,7 @@ __all__ = [
     "TeacherRate",
     "TeacherSalaryAccrual",
     "TeacherSalaryPayment",
+    "Attachment",
     "Message",
     "MailingCampaign",
     "MailingRecipient",

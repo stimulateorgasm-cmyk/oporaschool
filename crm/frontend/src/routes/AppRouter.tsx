@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { MainLayout } from '../components/layout/MainLayout';
 import { Login } from '../pages/Login';
 import { Dashboard } from '../pages/Dashboard';
+import { Directions } from '../pages/Directions';
 import { Clients } from '../pages/Clients';
 import { Schedule } from '../pages/Schedule';
 import { Payments } from '../pages/Payments';
@@ -51,6 +52,16 @@ export const AppRouter: React.FC = () => {
       >
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
+
+        {/* Manager, Admin, Teacher */}
+        <Route
+          path="/directions"
+          element={
+            <ProtectedRoute allowedRoles={['manager', 'administrator', 'teacher']}>
+              <Directions />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Manager & Admin */}
         <Route
