@@ -66,7 +66,9 @@ async def upload_attachment(
             detail="Файл пустой",
         )
 
+    # id задаём явно, чтобы имя файла на диске совпадало с id записи
     attachment = Attachment(
+        id=uuid.uuid4(),
         owner_type=owner_type,
         owner_id=owner_id,
         filename=file.filename or "file",
@@ -74,17 +76,14 @@ async def upload_attachment(
         size_bytes=len(content),
         created_by=current_user.id,
     )
-    db.add(attachment)
-    await db.flush()
-
     ext = MIME_EXT.get(file.content_type, "")
-    storage_name = f"{attachment.id}{ext}"
-    attachment.storage_path = storage_name
+    attachment.storage_path = f"{attachment.id}{ext}"
 
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    with open(_full_path(storage_name), "wb") as f:
+    with open(_full_path(attachment.storage_path), "wb") as f:
         f.write(content)
 
+    db.add(attachment)
     await db.commit()
     await db.refresh(attachment)
     return attachment
