@@ -11,8 +11,11 @@ import {
   BadgeRussianRuble,
   BookOpen,
   Award,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { TeacherModal } from '../components/teachers/TeacherModal';
+import { TeacherEditModal } from '../components/teachers/TeacherEditModal';
 import { Modal } from '../components/common/Modal';
 
 export const Teachers: React.FC = () => {
@@ -21,6 +24,7 @@ export const Teachers: React.FC = () => {
   const [subjects, setSubjects] = useState<SubjectRead[]>([]);
   const [isTeacherModalOpen, setIsTeacherModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [editingTeacher, setEditingTeacher] = useState<TeacherRead | null>(null);
 
   // Add Rate Modal state
   const [addingRateForTeacher, setAddingRateForTeacher] = useState<TeacherRead | null>(null);
@@ -66,6 +70,16 @@ export const Teachers: React.FC = () => {
       alert(err.message || 'Ошибка сохранения ставки');
     } finally {
       setIsSubmittingRate(false);
+    }
+  };
+
+  const handleDeleteRate = async (teacherId: string, rateId: string) => {
+    if (!window.confirm('Удалить ставку?')) return;
+    try {
+      await api.deleteTeacherRate(teacherId, rateId);
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Ошибка удаления ставки');
     }
   };
 
@@ -117,7 +131,19 @@ export const Teachers: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <StatusBadge status={teacher.status} />
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <StatusBadge status={teacher.status} />
+                  {isManager && (
+                    <button
+                      id={`btn-edit-teacher-${teacher.id}`}
+                      onClick={() => setEditingTeacher(teacher)}
+                      className="p-1.5 rounded-lg text-stone-400 hover:text-amber-700 hover:bg-amber-50 border border-transparent hover:border-amber-200 transition-colors"
+                      title="Редактировать педагога"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Subjects & Qualification */}
@@ -174,9 +200,20 @@ export const Teachers: React.FC = () => {
                             ({rate.lesson_format === 'individual' ? 'Индивид.' : 'Группа'})
                           </span>
                         </div>
-                        <span className="font-mono font-bold text-stone-900">
-                          {Number(rate.amount).toLocaleString('ru-RU')} ₽
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="font-mono font-bold text-stone-900">
+                            {Number(rate.amount).toLocaleString('ru-RU')} ₽
+                          </span>
+                          {isManager && (
+                            <button
+                              onClick={() => handleDeleteRate(teacher.id, rate.id)}
+                              className="p-1 rounded text-stone-300 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              title="Удалить ставку"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))
                   )}
@@ -303,6 +340,20 @@ export const Teachers: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Teacher Edit Modal */}
+      {editingTeacher && (
+        <TeacherEditModal
+          isOpen
+          onClose={() => setEditingTeacher(null)}
+          teacher={editingTeacher}
+          subjects={subjects}
+          onSubmit={async (data) => {
+            await api.updateTeacher(editingTeacher.id, data);
+            await loadData();
+          }}
+        />
+      )}
     </div>
   );
 };

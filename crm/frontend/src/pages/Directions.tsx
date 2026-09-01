@@ -24,7 +24,6 @@ interface DirectionChild {
   id: string;
   full_name: string;
   grade?: string;
-  learning_goal?: string;
   teacher_name?: string;
 }
 
@@ -339,12 +338,9 @@ export const Directions: React.FC = () => {
                         <span className="font-semibold text-stone-800">{c.full_name}</span>
                         {c.grade && <span className="text-stone-400">{c.grade}</span>}
                       </div>
-                      {(c.learning_goal || c.teacher_name) && (
+                      {c.teacher_name && (
                         <div className="text-stone-500 mt-0.5 truncate">
-                          {c.teacher_name && <span>Педагог: {c.teacher_name}</span>}
-                          {c.learning_goal && (
-                            <span className="ml-2">Цель: {c.learning_goal}</span>
-                          )}
+                          <span>Педагог: {c.teacher_name}</span>
                         </div>
                       )}
                     </div>

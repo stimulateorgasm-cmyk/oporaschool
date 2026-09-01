@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -147,6 +148,69 @@ async def get_parent(
     if not parent:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Клиент не найден")
     return parent
+
+
+@router.patch("/{parent_id}", response_model=ParentRead, summary="Обновить клиента (родителя)")
+async def update_parent(
+    parent_id: uuid.UUID,
+    data: ParentUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(["administrator", "manager"])),
+):
+    parent = await db.get(Parent, parent_id)
+    if not parent or parent.deleted_at:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Клиент не найден")
+
+    payload = data.model_dump(exclude_unset=True)
+    for field, value in payload.items():
+        setattr(parent, field, value)
+
+    await db.commit()
+
+    # Возвращаем карточку с загруженными детьми (как в get_parent)
+    stmt = (
+        select(Parent)
+        .where(Parent.id == parent_id)
+        .options(selectinload(Parent.children))
+    )
+    parent = (await db.execute(stmt)).scalar_one()
+    return parent
+
+
+@router.patch("/children/{child_id}", response_model=ChildRead, summary="Обновить ребенка")
+async def update_child(
+    child_id: uuid.UUID,
+    data: ChildUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(["administrator", "manager"])),
+):
+    child = await db.get(Child, child_id)
+    if not child or child.deleted_at:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ребенок не найден")
+
+    payload = data.model_dump(exclude_unset=True)
+    for field, value in payload.items():
+        setattr(child, field, value)
+
+    await db.commit()
+    await db.refresh(child)
+    return child
+
+
+@router.patch("/child-subjects/{cs_id}", summary="Открепить направление от ученика")
+async def archive_child_subject(
+    cs_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(["administrator", "manager"])),
+):
+    cs = await db.get(ChildSubject, cs_id)
+    if not cs:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Привязка не найдена")
+
+    cs.is_active = False
+    cs.end_date = date.today()
+    await db.commit()
+    return {"status": "success", "message": "Направление откреплено"}
 
 
 @router.post("/{parent_id}/children", response_model=ChildRead, summary="Добавить ребенка родителю")

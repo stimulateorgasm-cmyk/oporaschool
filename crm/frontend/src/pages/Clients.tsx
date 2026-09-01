@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { ParentRead, ChildRead, SubjectRead, TeacherRead, ClientStatus, ChildStatus } from '../types';
+import {
+  ParentRead,
+  ChildRead,
+  ChildSubjectRead,
+  SubjectRead,
+  TeacherRead,
+  ClientStatus,
+  ChildStatus,
+} from '../types';
 import { StatusBadge } from '../components/common/StatusBadge';
 import {
   Users,
@@ -12,16 +20,23 @@ import {
   BookOpen,
   CreditCard,
   UserPlus,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { ClientModal } from '../components/clients/ClientModal';
 import { ChildSubjectModal } from '../components/clients/ChildSubjectModal';
+import { ClientEditModal } from '../components/clients/ClientEditModal';
+import { ChildEditModal } from '../components/clients/ChildEditModal';
 import { PaymentModal } from '../components/payments/PaymentModal';
 import { Modal } from '../components/common/Modal';
+
+const formatLabel = (f: string) => (f === 'individual' ? 'Индивидуально' : 'Группа');
 
 export const Clients: React.FC = () => {
   const [clients, setClients] = useState<ParentRead[]>([]);
   const [subjects, setSubjects] = useState<SubjectRead[]>([]);
   const [teachers, setTeachers] = useState<TeacherRead[]>([]);
+  const [childSubjects, setChildSubjects] = useState<ChildSubjectRead[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [expandedParents, setExpandedParents] = useState<Record<string, boolean>>({});
@@ -35,26 +50,30 @@ export const Clients: React.FC = () => {
   // Attach Subject Modal
   const [attachingChild, setAttachingChild] = useState<{ id: string; name: string } | null>(null);
 
+  // Edit modals
+  const [editingParent, setEditingParent] = useState<ParentRead | null>(null);
+  const [editingChild, setEditingChild] = useState<ChildRead | null>(null);
+
   // Add Child Modal
   const [addingChildForParent, setAddingChildForParent] = useState<{ id: string; name: string } | null>(null);
   const [newChildName, setNewChildName] = useState('');
   const [newChildGrade, setNewChildGrade] = useState('');
-  const [newChildLearningGoal, setNewChildLearningGoal] = useState('');
   const [newChildComment, setNewChildComment] = useState('');
   const [isSubmittingChild, setIsSubmittingChild] = useState(false);
 
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [c, s, t] = await Promise.all([
+      const [c, s, t, cs] = await Promise.all([
         api.getClients({ search: search || undefined }),
         api.getSubjects(),
         api.getTeachers(),
+        api.getChildSubjects(),
       ]);
       setClients(c);
       setSubjects(s);
       setTeachers(t);
-      // Auto expand all on first load
+      setChildSubjects(cs);
       const initialExpanded: Record<string, boolean> = {};
       c.forEach((p) => (initialExpanded[p.id] = true));
       setExpandedParents(initialExpanded);
@@ -82,20 +101,28 @@ export const Clients: React.FC = () => {
       await api.createChild(addingChildForParent.id, {
         full_name: newChildName.trim(),
         grade: newChildGrade || undefined,
-        learning_goal: newChildLearningGoal.trim() || undefined,
         comment: newChildComment.trim() || undefined,
         status: ChildStatus.active,
       });
       setAddingChildForParent(null);
       setNewChildName('');
       setNewChildGrade('');
-      setNewChildLearningGoal('');
       setNewChildComment('');
       await loadData();
     } catch (err: any) {
       alert(err.message || 'Ошибка добавления ребенка');
     } finally {
       setIsSubmittingChild(false);
+    }
+  };
+
+  const handleDetachSubject = async (cs: ChildSubjectRead) => {
+    if (!window.confirm(`Открепить направление «${cs.subject_name}»?`)) return;
+    try {
+      await api.archiveChildSubject(cs.id);
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Ошибка открепления направления');
     }
   };
 
@@ -211,6 +238,18 @@ export const Clients: React.FC = () => {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        setEditingParent(parent);
+                      }}
+                      className="p-1.5 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-lg"
+                      title="Редактировать клиента"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setSelectedParentForPayment(parent.id);
                         setIsPaymentModalOpen(true);
                       }}
@@ -251,75 +290,100 @@ export const Clients: React.FC = () => {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-3">
-                        {parent.children?.map((child) => (
-                          <div
-                            key={child.id}
-                            id={`child-card-${child.id}`}
-                            className="p-4 bg-white rounded-xl border border-stone-200 shadow-2xs space-y-3"
-                          >
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-100 pb-2.5">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-xs text-stone-900">
-                                  {child.full_name}
-                                </span>
-                                {child.grade && (
-                                  <span className="text-[11px] text-stone-500">
-                                    {child.grade === 'дошкольник' ? 'дошкольник' : `${child.grade} класс`}
+                        {parent.children?.map((child) => {
+                          const childDirs = childSubjects.filter((cs) => cs.child_id === child.id && cs.is_active);
+                          return (
+                            <div
+                              key={child.id}
+                              id={`child-card-${child.id}`}
+                              className="p-4 bg-white rounded-xl border border-stone-200 shadow-2xs space-y-3"
+                            >
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-100 pb-2.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-xs text-stone-900">
+                                    {child.full_name}
                                   </span>
-                                )}
-                                {child.learning_goal && (
-                                  <span className="text-[11px] text-stone-500 italic">
-                                    — {child.learning_goal}
-                                  </span>
-                                )}
-                                <StatusBadge status={child.status} />
-                                {child.comment && (
-                                  <span className="text-xs text-stone-500 italic">
-                                    - {child.comment}
-                                  </span>
-                                )}
-                              </div>
-
-                              <button
-                                onClick={() =>
-                                  setAttachingChild({ id: child.id, name: child.full_name })
-                                }
-                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-md border border-amber-200 self-start sm:self-auto"
-                              >
-                                <BookOpen className="w-3.5 h-3.5" />
-                                <span>Прикрепить направление</span>
-                              </button>
-                            </div>
-
-                            {/* Child Subjects Table/List */}
-                            <div>
-                              <div className="text-[11px] font-semibold text-stone-600 mb-1.5">
-                                Изучаемые предметы и текущий баланс:
-                              </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                <div className="p-3 bg-stone-50 rounded-lg border border-stone-200 flex items-center justify-between text-xs">
-                                  <div>
-                                    <div className="font-bold text-stone-900">
-                                      Математика (ОГЭ/ЕГЭ)
-                                    </div>
-                                    <div className="text-[11px] text-stone-500">
-                                      Педагог: Смирнова Е.В. • Индивидуально (1 200 ₽)
-                                    </div>
-                                    <div className="text-[11px] text-stone-400 mt-0.5">
-                                      Пройдено уроков: 12
-                                    </div>
-                                  </div>
-                                  <div className="text-right">
-                                    <div className="text-xs font-semibold text-stone-500">Баланс:</div>
-                                    <span className="px-2 py-0.5 rounded-md font-bold text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 inline-block">
-                                      4 зан.
+                                  {child.grade && (
+                                    <span className="text-[11px] text-stone-500">
+                                      {child.grade === 'дошкольник' ? 'дошкольник' : `${child.grade} класс`}
                                     </span>
-                                  </div>
+                                  )}
+                                  <StatusBadge status={child.status} />
+                                  {child.comment && (
+                                    <span className="text-xs text-stone-500 italic">
+                                      - {child.comment}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-2 self-start sm:self-auto">
+                                  <button
+                                    onClick={() => setEditingChild(child)}
+                                    title="Редактировать ребенка"
+                                    className="p-1.5 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-lg"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      setAttachingChild({ id: child.id, name: child.full_name })
+                                    }
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-md border border-amber-200"
+                                  >
+                                    <BookOpen className="w-3.5 h-3.5" />
+                                    <span>Прикрепить направление</span>
+                                  </button>
                                 </div>
                               </div>
+
+                              {/* Child Subjects (направления и баланс) */}
+                              <div>
+                                <div className="text-[11px] font-semibold text-stone-600 mb-1.5">
+                                  Изучаемые направления и текущий баланс:
+                                </div>
+                                {childDirs.length === 0 ? (
+                                  <div className="p-3 text-center text-xs text-stone-400 bg-stone-50 rounded-lg border border-dashed border-stone-200">
+                                    Направления не прикреплены
+                                  </div>
+                                ) : (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    {childDirs.map((cs) => (
+                                      <div
+                                        key={cs.id}
+                                        className="p-3 bg-stone-50 rounded-lg border border-stone-200 flex items-center justify-between text-xs"
+                                      >
+                                        <div className="min-w-0">
+                                          <div className="font-bold text-stone-900">{cs.subject_name}</div>
+                                          <div className="text-[11px] text-stone-500 truncate">
+                                            Педагог: {cs.teacher_name} • {formatLabel(cs.lesson_format)} ({Number(cs.lesson_price).toLocaleString('ru-RU')} ₽)
+                                          </div>
+                                          <div className="text-[11px] text-stone-400 mt-0.5">
+                                            Пройдено уроков: {cs.completed_lessons}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          <div className="text-right">
+                                            <div className="text-[11px] font-semibold text-stone-500">Баланс:</div>
+                                            <span className="px-2 py-0.5 rounded-md font-bold text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 inline-block">
+                                              {cs.balance_lessons} зан.
+                                            </span>
+                                          </div>
+                                          <button
+                                            onClick={() => handleDetachSubject(cs)}
+                                            title="Открепить направление"
+                                            className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-stone-100 rounded-lg"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -339,6 +403,30 @@ export const Clients: React.FC = () => {
           await loadData();
         }}
       />
+
+      {editingParent && (
+        <ClientEditModal
+          isOpen={!!editingParent}
+          onClose={() => setEditingParent(null)}
+          client={editingParent}
+          onSubmit={async (data) => {
+            await api.updateClient(editingParent.id, data);
+            await loadData();
+          }}
+        />
+      )}
+
+      {editingChild && (
+        <ChildEditModal
+          isOpen={!!editingChild}
+          onClose={() => setEditingChild(null)}
+          child={editingChild}
+          onSubmit={async (data) => {
+            await api.updateChild(editingChild.id, data);
+            await loadData();
+          }}
+        />
+      )}
 
       {attachingChild && (
         <ChildSubjectModal
@@ -411,19 +499,6 @@ export const Clients: React.FC = () => {
                 </option>
               ))}
             </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-stone-700 mb-1">
-              Цель обучения
-            </label>
-            <input
-              type="text"
-              value={newChildLearningGoal}
-              onChange={(e) => setNewChildLearningGoal(e.target.value)}
-              placeholder="Подготовка к ОГЭ, общее развитие..."
-              className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
-            />
           </div>
 
           <div>

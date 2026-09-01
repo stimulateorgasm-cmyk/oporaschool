@@ -17,6 +17,8 @@ import {
   LoginRequest,
   ParentCreate,
   ParentRead,
+  ParentUpdate,
+  ChildUpdate,
   PaymentCreate,
   PaymentRead,
   RoomCreate,
@@ -26,6 +28,7 @@ import {
   SubjectRead,
   SubjectUpdate,
   TeacherCreate,
+  TeacherUpdate,
   TeacherRateCreate,
   TeacherRateRead,
   TeacherRead,
@@ -1043,6 +1046,20 @@ class ApiClient {
     return this.addChild(parentId, data);
   }
 
+  public async updateClient(parentId: string, data: ParentUpdate): Promise<ParentRead> {
+    return this.request<ParentRead>(`/clients/${parentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async updateChild(childId: string, data: ChildUpdate): Promise<ChildRead> {
+    return this.request<ChildRead>(`/clients/children/${childId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   public async getSubjects(): Promise<SubjectRead[]> {
     return this.request<SubjectRead[]>('/academic/subjects');
   }
@@ -1078,6 +1095,24 @@ class ApiClient {
     return this.request(`/attachments/${attachmentId}`, { method: 'DELETE' });
   }
 
+  public async downloadAttachment(attachmentId: string, filename: string): Promise<void> {
+    const headers: Record<string, string> = {};
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    const response = await fetch(`${API_BASE}/attachments/${attachmentId}/download`, { headers });
+    if (!response.ok) {
+      throw new Error('Ошибка скачивания файла');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   public async uploadAttachment(ownerType: string, ownerId: string, file: File): Promise<AttachmentRead> {
     const form = new FormData();
     form.append('file', file);
@@ -1111,6 +1146,10 @@ class ApiClient {
     return this.createChildSubject(data);
   }
 
+  public async archiveChildSubject(childSubjectId: string): Promise<{ status: string; message: string }> {
+    return this.request(`/clients/child-subjects/${childSubjectId}`, { method: 'PATCH' });
+  }
+
   public async getChildSubjects(childId?: string): Promise<ChildSubjectRead[]> {
     const qs = childId ? `?child_id=${encodeURIComponent(childId)}` : '';
     return this.request<ChildSubjectRead[]>(`/clients/child-subjects${qs}`);
@@ -1127,6 +1166,17 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  }
+
+  public async updateTeacher(teacherId: string, data: TeacherUpdate): Promise<TeacherRead> {
+    return this.request<TeacherRead>(`/teachers/${teacherId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async deleteTeacherRate(teacherId: string, rateId: string): Promise<{ status: string; message: string }> {
+    return this.request(`/teachers/${teacherId}/rates/${rateId}`, { method: 'DELETE' });
   }
 
   public async addTeacherRate(teacherId: string, data: TeacherRateCreate): Promise<TeacherRateRead> {

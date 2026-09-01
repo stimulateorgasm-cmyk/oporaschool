@@ -15,15 +15,15 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
   const [secondaryPhone, setSecondaryPhone] = useState('');
   const [comment, setComment] = useState('');
   const [status, setStatus] = useState<ClientStatus>(ClientStatus.active);
-  const [children, setChildren] = useState<Array<{ full_name: string; grade?: string; learning_goal?: string; comment?: string }>>([
-    { full_name: '', grade: '', learning_goal: '', comment: '' },
+  const [children, setChildren] = useState<Array<{ full_name: string; grade?: string; comment?: string }>>([
+    { full_name: '', grade: '', comment: '' },
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleAddChild = () => {
     if (children.length >= 5) return;
-    setChildren([...children, { full_name: '', grade: '', learning_goal: '', comment: '' }]);
+    setChildren([...children, { full_name: '', grade: '', comment: '' }]);
   };
 
   const handleRemoveChild = (index: number) => {
@@ -49,7 +49,6 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
       .map((c) => ({
         full_name: c.full_name.trim(),
         grade: c.grade || undefined,
-        learning_goal: c.learning_goal || undefined,
         comment: c.comment || undefined,
       }));
 
@@ -68,7 +67,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
       setPhone('');
       setSecondaryPhone('');
       setComment('');
-      setChildren([{ full_name: '', grade: '', learning_goal: '', comment: '' }]);
+      setChildren([{ full_name: '', grade: '', comment: '' }]);
       onClose();
     } catch (err: any) {
       setError(err.message || 'Не удалось сохранить клиента');
@@ -205,18 +204,6 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
                         </option>
                       ))}
                     </select>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-medium text-stone-600 mb-0.5">
-                      Цель обучения
-                    </label>
-                    <input
-                      type="text"
-                      value={child.learning_goal}
-                      onChange={(e) => handleChildChange(idx, 'learning_goal', e.target.value)}
-                      placeholder="Например: подготовка к ОГЭ по математике"
-                      className="w-full px-2.5 py-1.5 text-xs rounded border border-stone-200 bg-white"
-                    />
                   </div>
                   <div className="sm:col-span-2">
                     <input

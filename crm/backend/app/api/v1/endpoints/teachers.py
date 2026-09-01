@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
@@ -134,3 +134,71 @@ async def add_teacher_rate(
     await db.commit()
     await db.refresh(rate)
     return rate
+
+
+@router.patch("/{teacher_id}", response_model=TeacherRead, summary="Обновить педагога (Руководитель)")
+async def update_teacher(
+    teacher_id: uuid.UUID,
+    data: TeacherUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(["manager"])),
+):
+    teacher = await db.get(Teacher, teacher_id)
+    if not teacher or teacher.deleted_at:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Педагог не найден")
+
+    payload = data.model_dump(exclude_unset=True)
+    subject_ids = payload.pop("subject_ids", None)
+
+    for field, value in payload.items():
+        setattr(teacher, field, value)
+
+    if subject_ids is not None:
+        await db.execute(delete(TeacherSubject).where(TeacherSubject.teacher_id == teacher_id))
+        for s_id in subject_ids:
+            db.add(TeacherSubject(teacher_id=teacher_id, subject_id=s_id))
+
+    await db.commit()
+
+    # Перечитываем с загруженными направлениями и ставками
+    stmt = (
+        select(Teacher)
+        .where(Teacher.id == teacher_id)
+        .options(selectinload(Teacher.subjects), selectinload(Teacher.rates))
+    )
+    teacher = (await db.execute(stmt)).scalar_one()
+    accrued, paid, debt, overpayment = await SalaryService.calculate_teacher_balance(
+        db, teacher.id
+    )
+    return TeacherRead(
+        id=teacher.id,
+        user_id=teacher.user_id,
+        full_name=teacher.full_name,
+        phone=teacher.phone,
+        start_date=teacher.start_date,
+        status=teacher.status,
+        comment=teacher.comment,
+        created_at=teacher.created_at,
+        subjects=[SubjectRead.model_validate(s) for s in teacher.subjects],
+        rates=[TeacherRateRead.model_validate(r) for r in teacher.rates],
+        total_accrued=accrued,
+        total_paid=paid,
+        debt=debt,
+        overpayment=overpayment,
+    )
+
+
+@router.delete("/{teacher_id}/rates/{rate_id}", summary="Удалить ставку педагога (Руководитель)")
+async def delete_teacher_rate(
+    teacher_id: uuid.UUID,
+    rate_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(["manager"])),
+):
+    rate = await db.get(TeacherRate, rate_id)
+    if not rate or rate.teacher_id != teacher_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ставка не найдена")
+
+    await db.delete(rate)
+    await db.commit()
+    return {"status": "success", "message": "Ставка удалена"}

@@ -280,6 +280,15 @@ export interface TeacherCreate {
   initial_rates?: TeacherRateCreate[];
 }
 
+export interface TeacherUpdate {
+  full_name?: string;
+  phone?: string;
+  start_date?: string;
+  status?: TeacherStatus;
+  comment?: string;
+  subject_ids?: string[];
+}
+
 export interface ChildSubjectCreate {
   child_id: string;
   subject_id: string;
