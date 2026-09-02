@@ -22,7 +22,7 @@ import { Teacher, Review, ServiceItem, LeadApplication, BitrixConfig } from './t
 const ADMIN_PASSWORD = 'opora';
 
 // Версия данных -- меняем при изменении структуры teachers/data
-const DATA_VERSION = 14;
+const DATA_VERSION = 15;
 
 export default function App() {
   // Авто-миграция: если версия старая -- сбрасываем кэш учителей
