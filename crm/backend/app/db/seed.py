@@ -92,12 +92,15 @@ async def seed_data():
         db.add(UserRole(user_id=user_teacher1.id, role_id=role_teacher.id))
         db.add(UserRole(user_id=user_teacher2.id, role_id=role_teacher.id))
 
-        # 3. Create Rooms
-        r1 = Room(number=1, name="Кабинет математики (№1)", capacity=4)
-        r2 = Room(number=2, name="Кабинет логопедии (№2)", capacity=2)
-        r3 = Room(number=3, name="Кабинет русского языка (№3)", capacity=6)
-        r4 = Room(number=4, name="Сенсорная комната (№4)", capacity=3)
-        db.add_all([r1, r2, r3, r4])
+        # 3. Create Rooms (7 кабинетов, номера без названий — по пожеланию Нади)
+        r1 = Room(number=1, name="1", capacity=4)
+        r2 = Room(number=2, name="2", capacity=2)
+        r3 = Room(number=3, name="3", capacity=6)
+        r4 = Room(number=4, name="4", capacity=3)
+        r5 = Room(number=5, name="5", capacity=None)
+        r6 = Room(number=6, name="6", capacity=None)
+        r7 = Room(number=7, name="7", capacity=None)
+        db.add_all([r1, r2, r3, r4, r5, r6, r7])
         await db.flush()
 
         # 4. Create Subjects
