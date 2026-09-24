@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../api/client';
+import { api, resolveUploadUrl } from '../api/client';
 import { TeacherRead, SubjectRead, TeacherRateRead, TeacherCreate } from '../types';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { useAuth } from '../context/AuthContext';
@@ -13,6 +13,7 @@ import {
   Award,
   Pencil,
   Trash2,
+  Camera,
 } from 'lucide-react';
 import { TeacherModal } from '../components/teachers/TeacherModal';
 import { TeacherEditModal } from '../components/teachers/TeacherEditModal';
@@ -83,6 +84,17 @@ export const Teachers: React.FC = () => {
     }
   };
 
+  const handlePhotoUpload = async (teacherId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      await api.uploadTeacherPhoto(teacherId, file);
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Ошибка загрузки фото');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -120,8 +132,12 @@ export const Teachers: React.FC = () => {
               {/* Header with name & status */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 font-bold flex items-center justify-center text-sm border border-amber-200">
-                    {teacher.full_name.charAt(0)}
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 font-bold flex items-center justify-center text-sm border border-amber-200 overflow-hidden">
+                    {resolveUploadUrl(teacher.photo_url) ? (
+                      <img src={resolveUploadUrl(teacher.photo_url)} alt={teacher.full_name} className="w-full h-full object-cover" />
+                    ) : (
+                      teacher.full_name.charAt(0)
+                    )}
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-stone-900">{teacher.full_name}</h3>
@@ -133,6 +149,22 @@ export const Teachers: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <StatusBadge status={teacher.status} />
+                  {isManager && (
+                    <label
+                      htmlFor={`teacher-photo-${teacher.id}`}
+                      title="Загрузить фото педагога"
+                      className="p-1.5 rounded-lg text-stone-400 hover:text-amber-700 hover:bg-amber-50 border border-transparent hover:border-amber-200 transition-colors cursor-pointer"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <input
+                        id={`teacher-photo-${teacher.id}`}
+                        type="file"
+                        accept="image/jpeg,image/png"
+                        className="hidden"
+                        onChange={(e) => handlePhotoUpload(teacher.id, e)}
+                      />
+                    </label>
+                  )}
                   {isManager && (
                     <button
                       id={`btn-edit-teacher-${teacher.id}`}

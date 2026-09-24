@@ -6,6 +6,7 @@ from app.api.v1.endpoints import (
     balance,
     clients,
     payments,
+    public,
     salary,
     schedule,
     system,
@@ -23,3 +24,4 @@ api_router.include_router(payments.router)
 api_router.include_router(balance.router)
 api_router.include_router(salary.router)
 api_router.include_router(system.router)
+api_router.include_router(public.router)

@@ -15,15 +15,15 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
   const [secondaryPhone, setSecondaryPhone] = useState('');
   const [comment, setComment] = useState('');
   const [status, setStatus] = useState<ClientStatus>(ClientStatus.active);
-  const [children, setChildren] = useState<Array<{ full_name: string; grade?: string; comment?: string }>>([
-    { full_name: '', grade: '', comment: '' },
+  const [children, setChildren] = useState<Array<{ full_name: string; grade?: string }>>([
+    { full_name: '', grade: '' },
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleAddChild = () => {
     if (children.length >= 5) return;
-    setChildren([...children, { full_name: '', grade: '', comment: '' }]);
+    setChildren([...children, { full_name: '', grade: '' }]);
   };
 
   const handleRemoveChild = (index: number) => {
@@ -49,7 +49,6 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
       .map((c) => ({
         full_name: c.full_name.trim(),
         grade: c.grade || undefined,
-        comment: c.comment || undefined,
       }));
 
     try {
@@ -67,7 +66,7 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
       setPhone('');
       setSecondaryPhone('');
       setComment('');
-      setChildren([{ full_name: '', grade: '', comment: '' }]);
+      setChildren([{ full_name: '', grade: '' }]);
       onClose();
     } catch (err: any) {
       setError(err.message || 'Не удалось сохранить клиента');
@@ -204,15 +203,6 @@ export const ClientModal: React.FC<ClientModalProps> = ({ isOpen, onClose, onSub
                         </option>
                       ))}
                     </select>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <input
-                      type="text"
-                      value={child.comment}
-                      onChange={(e) => handleChildChange(idx, 'comment', e.target.value)}
-                      placeholder="Комментарий (особенности, примечания)..."
-                      className="w-full px-2.5 py-1.5 text-xs rounded border border-stone-200 bg-white"
-                    />
                   </div>
                 </div>
               </div>

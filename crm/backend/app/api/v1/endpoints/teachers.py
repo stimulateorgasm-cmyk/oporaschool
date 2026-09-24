@@ -1,9 +1,11 @@
+import os
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.rbac import get_current_user, require_roles
 from app.models.academic import Subject, Teacher, TeacherSubject
@@ -22,6 +24,31 @@ from app.schemas.academic import (
 from app.services.salary_service import SalaryService
 
 router = APIRouter(prefix="/teachers", tags=["Педагоги и Предметы"])
+
+PHOTO_EXT = {"image/jpeg": ".jpg", "image/png": ".png"}
+
+
+async def _teacher_read(db: AsyncSession, t: Teacher) -> TeacherRead:
+    accrued, paid, debt, overpayment = await SalaryService.calculate_teacher_balance(
+        db, t.id
+    )
+    return TeacherRead(
+        id=t.id,
+        user_id=t.user_id,
+        full_name=t.full_name,
+        phone=t.phone,
+        start_date=t.start_date,
+        status=t.status,
+        comment=t.comment,
+        photo_url=t.photo_url,
+        created_at=t.created_at,
+        subjects=[SubjectRead.model_validate(s) for s in t.subjects],
+        rates=[TeacherRateRead.model_validate(r) for r in t.rates],
+        total_accrued=accrued,
+        total_paid=paid,
+        debt=debt,
+        overpayment=overpayment,
+    )
 
 
 @router.get("", response_model=List[TeacherRead], summary="Список педагогов")
@@ -48,26 +75,7 @@ async def get_teachers(
 
     response = []
     for t in teachers:
-        accrued, paid, debt, overpayment = await SalaryService.calculate_teacher_balance(
-            db, t.id
-        )
-        read_obj = TeacherRead(
-            id=t.id,
-            user_id=t.user_id,
-            full_name=t.full_name,
-            phone=t.phone,
-            start_date=t.start_date,
-            status=t.status,
-            comment=t.comment,
-            created_at=t.created_at,
-            subjects=[SubjectRead.model_validate(s) for s in t.subjects],
-            rates=[TeacherRateRead.model_validate(r) for r in t.rates],
-            total_accrued=accrued,
-            total_paid=paid,
-            debt=debt,
-            overpayment=overpayment,
-        )
-        response.append(read_obj)
+        response.append(await _teacher_read(db, t))
     return response
 
 
@@ -167,25 +175,52 @@ async def update_teacher(
         .options(selectinload(Teacher.subjects), selectinload(Teacher.rates))
     )
     teacher = (await db.execute(stmt)).scalar_one()
-    accrued, paid, debt, overpayment = await SalaryService.calculate_teacher_balance(
-        db, teacher.id
+    return await _teacher_read(db, teacher)
+
+
+@router.post("/{teacher_id}/photo", response_model=TeacherRead, summary="Загрузить фото педагога (Руководитель)")
+async def upload_teacher_photo(
+    teacher_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(["manager"])),
+):
+    teacher = await db.get(Teacher, teacher_id)
+    if not teacher or teacher.deleted_at:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Педагог не найден")
+
+    if file.content_type not in PHOTO_EXT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Фото должно быть в формате JPEG или PNG",
+        )
+
+    content = await file.read()
+    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if len(content) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Файл слишком большой. Максимум {settings.MAX_UPLOAD_SIZE_MB} МБ",
+        )
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Файл пустой")
+
+    filename = f"{uuid.uuid4()}{PHOTO_EXT[file.content_type]}"
+    rel_path = f"teachers/{filename}"
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, "teachers"), exist_ok=True)
+    with open(os.path.join(settings.UPLOAD_DIR, rel_path), "wb") as f:
+        f.write(content)
+
+    teacher.photo_path = rel_path
+    await db.commit()
+
+    stmt = (
+        select(Teacher)
+        .where(Teacher.id == teacher_id)
+        .options(selectinload(Teacher.subjects), selectinload(Teacher.rates))
     )
-    return TeacherRead(
-        id=teacher.id,
-        user_id=teacher.user_id,
-        full_name=teacher.full_name,
-        phone=teacher.phone,
-        start_date=teacher.start_date,
-        status=teacher.status,
-        comment=teacher.comment,
-        created_at=teacher.created_at,
-        subjects=[SubjectRead.model_validate(s) for s in teacher.subjects],
-        rates=[TeacherRateRead.model_validate(r) for r in teacher.rates],
-        total_accrued=accrued,
-        total_paid=paid,
-        debt=debt,
-        overpayment=overpayment,
-    )
+    teacher = (await db.execute(stmt)).scalar_one()
+    return await _teacher_read(db, teacher)
 
 
 @router.delete("/{teacher_id}/rates/{rate_id}", summary="Удалить ставку педагога (Руководитель)")

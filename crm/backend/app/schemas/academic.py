@@ -82,6 +82,7 @@ class TeacherRead(TeacherBase):
     id: uuid.UUID
     user_id: Optional[uuid.UUID] = None
     created_at: datetime
+    photo_url: Optional[str] = None
     subjects: List[SubjectRead] = []
     rates: List[TeacherRateRead] = []
     total_accrued: Decimal = Decimal("0.00")

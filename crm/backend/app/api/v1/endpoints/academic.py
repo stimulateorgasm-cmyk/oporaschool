@@ -174,7 +174,6 @@ async def get_subject_children(
                 "id": cs.child.id,
                 "full_name": cs.child.full_name,
                 "grade": cs.child.grade,
-                "learning_goal": cs.child.learning_goal,
                 "teacher_name": cs.teacher.full_name if cs.teacher else None,
             }
         )

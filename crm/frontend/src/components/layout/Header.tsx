@@ -1,18 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Menu, LogOut, Shield, User as UserIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { resolveUploadUrl } from '../../api/client';
+import { ProfileModal } from '../profile/ProfileModal';
 
 interface HeaderProps {
   onToggleMobileSidebar: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ onToggleMobileSidebar }) => {
-  const { user, logout, isManager, isAdmin, isTeacher } = useAuth();
+  const { user, logout, updateUser, isManager, isAdmin, isTeacher } = useAuth();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   let roleTitle = 'Пользователь';
   if (isManager) roleTitle = 'Руководитель';
   else if (isAdmin) roleTitle = 'Администратор';
   else if (isTeacher) roleTitle = 'Педагог';
+
+  const avatarUrl = resolveUploadUrl(user?.avatar_url);
 
   return (
     <header
@@ -47,9 +52,20 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileSidebar }) => {
         </div>
 
         {/* User Card */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-stone-600 font-semibold text-xs border border-stone-300">
-            {user?.full_name ? user.full_name.charAt(0) : <UserIcon className="w-4 h-4" />}
+        <button
+          id="crm-profile-btn"
+          onClick={() => setIsProfileOpen(true)}
+          className="flex items-center gap-2.5 rounded-lg hover:bg-stone-50 px-1.5 py-1 transition-colors"
+          title="Мой профиль"
+        >
+          <div className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-stone-600 font-semibold text-xs border border-stone-300 overflow-hidden">
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+            ) : user?.full_name ? (
+              user.full_name.charAt(0)
+            ) : (
+              <UserIcon className="w-4 h-4" />
+            )}
           </div>
           <div className="hidden md:block text-left">
             <div className="text-xs font-semibold text-stone-900 leading-tight">
@@ -57,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileSidebar }) => {
             </div>
             <div className="text-[10px] text-stone-500">{user?.phone || '+7 (918) 000-00-01'}</div>
           </div>
-        </div>
+        </button>
 
         {/* Logout */}
         <button
@@ -69,6 +85,12 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobileSidebar }) => {
           <LogOut className="w-4 h-4" />
         </button>
       </div>
+
+      <ProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        onUpdated={updateUser}
+      />
     </header>
   );
 };

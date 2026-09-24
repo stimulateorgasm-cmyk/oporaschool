@@ -127,6 +127,44 @@ async def get_lessons(
     return [_build_lesson_read(l) for l in lessons]
 
 
+@router.get("/occupancy", summary="Занятость кабинетов (для календаря)")
+async def get_occupancy(
+    from_date: Optional[datetime] = Query(None),
+    to_date: Optional[datetime] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    user_roles = [r.code for r in current_user.roles]
+    is_staff = "manager" in user_roles or "administrator" in user_roles
+
+    query = (
+        select(Lesson)
+        .where(Lesson.deleted_at.is_(None))
+        .options(selectinload(Lesson.child), selectinload(Lesson.teacher))
+    )
+    if from_date:
+        query = query.where(Lesson.starts_at >= from_date)
+    if to_date:
+        query = query.where(Lesson.ends_at <= to_date)
+
+    result = await db.execute(query)
+    lessons = result.scalars().all()
+
+    out = []
+    for l in lessons:
+        slot = {
+            "room_id": l.room_id,
+            "starts_at": l.starts_at,
+            "ends_at": l.ends_at,
+            "status": l.status.value if l.status else None,
+        }
+        if is_staff:
+            slot["child_name"] = l.child.full_name if l.child else None
+            slot["teacher_name"] = l.teacher.full_name if l.teacher else None
+        out.append(slot)
+    return out
+
+
 @router.post("/lessons", response_model=LessonRead, summary="Создание занятия (с защитой от конфликтов)")
 async def create_lesson(
     data: LessonCreate,

@@ -74,5 +74,13 @@ class UserRead(UserBase):
     created_at: datetime
     roles: List[RoleRead] = []
     teacher_id: Optional[uuid.UUID] = None
+    avatar_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MeUpdate(BaseModel):
+    full_name: Optional[str] = Field(None, min_length=2, max_length=200)
+    phone: Optional[str] = Field(None, min_length=10, max_length=20)
+    current_password: Optional[str] = None
+    new_password: Optional[str] = Field(None, min_length=6)

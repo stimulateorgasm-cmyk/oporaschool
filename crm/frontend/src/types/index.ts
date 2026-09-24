@@ -129,6 +129,14 @@ export interface UserRead {
   created_at: string;
   roles: RoleRead[];
   teacher_id?: string;
+  avatar_url?: string;
+}
+
+export interface MeUpdate {
+  full_name?: string;
+  phone?: string;
+  current_password?: string;
+  new_password?: string;
 }
 
 export interface UserCreate {
@@ -150,8 +158,6 @@ export interface ChildCreate {
   full_name: string;
   birth_date?: string;
   grade?: string;
-  learning_goal?: string;
-  comment?: string;
   status?: ChildStatus;
 }
 
@@ -159,8 +165,6 @@ export interface ChildUpdate {
   full_name?: string;
   birth_date?: string;
   grade?: string;
-  learning_goal?: string;
-  comment?: string;
   status?: ChildStatus;
 }
 
@@ -170,8 +174,6 @@ export interface ChildRead {
   full_name: string;
   birth_date?: string;
   grade?: string;
-  learning_goal?: string;
-  comment?: string;
   status: ChildStatus;
   created_at: string;
   active_subjects_count: number;
@@ -260,6 +262,7 @@ export interface TeacherRead {
   start_date?: string;
   status: TeacherStatus;
   comment?: string;
+  photo_url?: string;
   created_at: string;
   subjects: SubjectRead[];
   rates: TeacherRateRead[];
@@ -399,6 +402,15 @@ export interface LessonRead {
   attachment_id?: string;
   created_at: string;
   history: LessonHistoryRead[];
+}
+
+export interface OccupancySlot {
+  room_id: string;
+  starts_at: string;
+  ends_at: string;
+  status?: string;
+  child_name?: string;
+  teacher_name?: string;
 }
 
 // ---------------- ATTACHMENTS ----------------

@@ -58,7 +58,6 @@ export const Clients: React.FC = () => {
   const [addingChildForParent, setAddingChildForParent] = useState<{ id: string; name: string } | null>(null);
   const [newChildName, setNewChildName] = useState('');
   const [newChildGrade, setNewChildGrade] = useState('');
-  const [newChildComment, setNewChildComment] = useState('');
   const [isSubmittingChild, setIsSubmittingChild] = useState(false);
 
   const loadData = async () => {
@@ -101,13 +100,11 @@ export const Clients: React.FC = () => {
       await api.createChild(addingChildForParent.id, {
         full_name: newChildName.trim(),
         grade: newChildGrade || undefined,
-        comment: newChildComment.trim() || undefined,
         status: ChildStatus.active,
       });
       setAddingChildForParent(null);
       setNewChildName('');
       setNewChildGrade('');
-      setNewChildComment('');
       await loadData();
     } catch (err: any) {
       alert(err.message || 'Ошибка добавления ребенка');
@@ -309,11 +306,6 @@ export const Clients: React.FC = () => {
                                     </span>
                                   )}
                                   <StatusBadge status={child.status} />
-                                  {child.comment && (
-                                    <span className="text-xs text-stone-500 italic">
-                                      - {child.comment}
-                                    </span>
-                                  )}
                                 </div>
 
                                 <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -499,19 +491,6 @@ export const Clients: React.FC = () => {
                 </option>
               ))}
             </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-stone-700 mb-1">
-              Примечание
-            </label>
-            <input
-              type="text"
-              value={newChildComment}
-              onChange={(e) => setNewChildComment(e.target.value)}
-              placeholder="Особенности, пожелания..."
-              className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
-            />
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-stone-100">

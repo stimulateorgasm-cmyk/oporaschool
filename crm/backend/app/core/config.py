@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # Files (локальный диск — данные не покидают сервер)
     UPLOAD_DIR: str = "/opt/opora-crm/uploads"
     MAX_UPLOAD_SIZE_MB: int = 20
+    # Публичный origin для абсолютных ссылок на файлы (сайт opora.school)
+    PUBLIC_BASE_URL: str = "https://crm.opora.school"
     ALLOWED_ATTACHMENT_MIME: List[str] = [
         "application/pdf",
         "image/jpeg",

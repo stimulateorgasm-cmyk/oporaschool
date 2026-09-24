@@ -15,7 +15,6 @@ const GRADES = ['дошкольник', ...Array.from({ length: 11 }, (_, i) => 
 export const ChildEditModal: React.FC<ChildEditModalProps> = ({ isOpen, onClose, child, onSubmit }) => {
   const [fullName, setFullName] = useState(child.full_name);
   const [grade, setGrade] = useState(child.grade || '');
-  const [comment, setComment] = useState(child.comment || '');
   const [status, setStatus] = useState<ChildStatus>(child.status);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +23,6 @@ export const ChildEditModal: React.FC<ChildEditModalProps> = ({ isOpen, onClose,
     if (isOpen) {
       setFullName(child.full_name);
       setGrade(child.grade || '');
-      setComment(child.comment || '');
       setStatus(child.status);
       setError(null);
     }
@@ -42,7 +40,6 @@ export const ChildEditModal: React.FC<ChildEditModalProps> = ({ isOpen, onClose,
       await onSubmit({
         full_name: fullName.trim(),
         grade: grade || undefined,
-        comment: comment.trim() || undefined,
         status,
       });
       onClose();
@@ -110,17 +107,6 @@ export const ChildEditModal: React.FC<ChildEditModalProps> = ({ isOpen, onClose,
               <option value={ChildStatus.completed}>Завершенный</option>
               <option value={ChildStatus.archived}>В архиве</option>
             </select>
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-stone-700 mb-1">Комментарий</label>
-            <textarea
-              rows={2}
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="Особенности, пожелания..."
-              className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white resize-none"
-            />
           </div>
         </div>
 

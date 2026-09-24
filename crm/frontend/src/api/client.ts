@@ -15,6 +15,8 @@ import {
   LessonMoveRequest,
   LessonRead,
   LoginRequest,
+  MeUpdate,
+  OccupancySlot,
   ParentCreate,
   ParentRead,
   ParentUpdate,
@@ -53,6 +55,10 @@ import {
 } from '../types';
 
 const API_BASE = '/api/v1';
+
+// Бэкенд отдаёт относительные пути /uploads/...; фронт резолвит через свой API-базис.
+export const resolveUploadUrl = (path?: string | null): string | undefined =>
+  path ? `${API_BASE}${path}` : undefined;
 
 class ApiClient {
   private token: string | null = null;
@@ -209,8 +215,6 @@ class ApiClient {
             parent_id: 'p-1',
             full_name: 'Иванов Артем Дмитриевич',
             grade: '7',
-            learning_goal: 'Подготовка к олимпиадам',
-            comment: 'Сильный ученик',
             status: ChildStatus.active,
             created_at: new Date().toISOString(),
             active_subjects_count: 2,
@@ -231,8 +235,6 @@ class ApiClient {
             parent_id: 'p-2',
             full_name: 'Петрова София Сергеевна',
             grade: 'дошкольник',
-            learning_goal: 'Подготовка к школе',
-            comment: '',
             status: ChildStatus.active,
             created_at: new Date().toISOString(),
             active_subjects_count: 1,
@@ -253,8 +255,6 @@ class ApiClient {
             parent_id: 'p-3',
             full_name: 'Ковалев Максим',
             grade: '4',
-            learning_goal: 'Коррекция речи',
-            comment: '',
             status: ChildStatus.active,
             created_at: new Date().toISOString(),
             active_subjects_count: 1,
@@ -630,8 +630,6 @@ class ApiClient {
           parent_id: parentId,
           full_name: body.full_name,
           grade: body.grade,
-          learning_goal: body.learning_goal,
-          comment: body.comment,
           status: body.status || ChildStatus.active,
           created_at: new Date().toISOString(),
           active_subjects_count: 0,
@@ -676,8 +674,6 @@ class ApiClient {
           parent_id: `p-${Date.now()}`,
           full_name: ch.full_name,
           grade: ch.grade,
-          learning_goal: ch.learning_goal,
-          comment: ch.comment,
           status: ch.status || ChildStatus.active,
           created_at: new Date().toISOString(),
           active_subjects_count: 0,
@@ -1006,6 +1002,31 @@ class ApiClient {
     return this.request<UserRead>('/auth/me');
   }
 
+  public async updateMe(data: MeUpdate): Promise<UserRead> {
+    return this.request<UserRead>('/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async uploadAvatar(file: File): Promise<UserRead> {
+    const form = new FormData();
+    form.append('file', file);
+    const headers: Record<string, string> = {};
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    const response = await fetch(`${API_BASE}/auth/me/avatar`, { method: 'POST', headers, body: form });
+    if (response.status === 401) {
+      this.setToken(null);
+      if (this.onUnauthorizedCallback) this.onUnauthorizedCallback();
+      throw new Error('Сессия истекла. Пожалуйста, авторизуйтесь заново.');
+    }
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+      throw new Error(errorBody.detail || `Ошибка сервера: ${response.status}`);
+    }
+    return await response.json();
+  }
+
   public async createUser(data: UserCreate): Promise<UserRead> {
     return this.request<UserRead>('/auth/users', {
       method: 'POST',
@@ -1082,7 +1103,7 @@ class ApiClient {
     return this.request(`/academic/subjects/${subjectId}/teachers`);
   }
 
-  public async getSubjectChildren(subjectId: string): Promise<{ id: string; full_name: string; grade?: string; learning_goal?: string; teacher_name?: string }[]> {
+  public async getSubjectChildren(subjectId: string): Promise<{ id: string; full_name: string; grade?: string; teacher_name?: string }[]> {
     return this.request(`/academic/subjects/${subjectId}/children`);
   }
 
@@ -1175,6 +1196,24 @@ class ApiClient {
     });
   }
 
+  public async uploadTeacherPhoto(teacherId: string, file: File): Promise<TeacherRead> {
+    const form = new FormData();
+    form.append('file', file);
+    const headers: Record<string, string> = {};
+    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    const response = await fetch(`${API_BASE}/teachers/${teacherId}/photo`, { method: 'POST', headers, body: form });
+    if (response.status === 401) {
+      this.setToken(null);
+      if (this.onUnauthorizedCallback) this.onUnauthorizedCallback();
+      throw new Error('Сессия истекла. Пожалуйста, авторизуйтесь заново.');
+    }
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ detail: response.statusText }));
+      throw new Error(errorBody.detail || `Ошибка сервера: ${response.status}`);
+    }
+    return await response.json();
+  }
+
   public async deleteTeacherRate(teacherId: string, rateId: string): Promise<{ status: string; message: string }> {
     return this.request(`/teachers/${teacherId}/rates/${rateId}`, { method: 'DELETE' });
   }
@@ -1230,6 +1269,14 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  }
+
+  public async getOccupancy(params?: { from_date?: string; to_date?: string }): Promise<OccupancySlot[]> {
+    const query = new URLSearchParams();
+    if (params?.from_date) query.append('from_date', params.from_date);
+    if (params?.to_date) query.append('to_date', params.to_date);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return this.request<OccupancySlot[]>(`/schedule/occupancy${qs}`);
   }
 
   public async moveLesson(lessonId: string, data: LessonMoveRequest): Promise<any> {

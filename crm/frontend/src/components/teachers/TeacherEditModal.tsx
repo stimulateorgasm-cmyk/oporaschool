@@ -162,13 +162,13 @@ export const TeacherEditModal: React.FC<TeacherEditModalProps> = ({
 
           <div className="md:col-span-2">
             <label className="block text-xs font-semibold text-stone-700 mb-1">
-              Комментарий / Квалификация
+              Описание на сайте
             </label>
             <textarea
               rows={2}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Опыт работы, категория, регалии..."
+              placeholder="Опыт работы, категория, регалии — этот текст виден на сайте opora.school..."
               className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white resize-none"
             />
           </div>

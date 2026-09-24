@@ -81,8 +81,6 @@ async def create_parent(
                 full_name=child_data.full_name,
                 birth_date=child_data.birth_date,
                 grade=child_data.grade,
-                learning_goal=child_data.learning_goal,
-                comment=child_data.comment,
                 status=child_data.status,
             )
             db.add(child)
@@ -242,8 +240,6 @@ async def add_child(
         full_name=data.full_name,
         birth_date=data.birth_date,
         grade=data.grade,
-        learning_goal=data.learning_goal,
-        comment=data.comment,
         status=data.status,
     )
     db.add(child)

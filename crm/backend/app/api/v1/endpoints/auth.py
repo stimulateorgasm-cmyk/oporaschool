@@ -1,6 +1,7 @@
+import os
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -17,6 +18,7 @@ from app.models.auth import RefreshToken, Role, User, UserRole
 from app.models.enums import UserStatus
 from app.schemas.auth import (
     LoginRequest,
+    MeUpdate,
     RefreshTokenRequest,
     Token,
     UserCreate,
@@ -26,6 +28,8 @@ from app.schemas.auth import (
 from app.services.audit_service import AuditService
 
 router = APIRouter(prefix="/auth", tags=["Аутентификация и пользователи"])
+
+AVATAR_EXT = {"image/jpeg": ".jpg", "image/png": ".png"}
 
 
 @router.post("/login", response_model=Token, summary="Авторизация пользователя")
@@ -128,3 +132,76 @@ async def create_user(
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@router.patch("/me", response_model=UserRead, summary="Обновить свой профиль (ФИО/телефон/пароль)")
+async def update_me(
+    data: MeUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    payload = data.model_dump(exclude_unset=True)
+    new_password = payload.pop("new_password", None)
+    current_password = payload.pop("current_password", None)
+
+    if new_password:
+        if not current_password or not verify_password(current_password, current_user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Текущий пароль указан неверно",
+            )
+        current_user.password_hash = get_password_hash(new_password)
+
+    # телефон = логин, должен оставаться уникальным
+    phone = payload.get("phone")
+    if phone and phone != current_user.phone:
+        exists = (
+            await db.execute(select(User).where(User.phone == phone, User.id != current_user.id))
+        ).scalar_one_or_none()
+        if exists:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Пользователь с таким номером телефона уже существует",
+            )
+
+    for field in ("full_name", "phone"):
+        if field in payload and payload[field] is not None:
+            setattr(current_user, field, payload[field])
+
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+
+@router.post("/me/avatar", response_model=UserRead, summary="Загрузить/сменить фото профиля")
+async def upload_avatar(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if file.content_type not in AVATAR_EXT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Фото должно быть в формате JPEG или PNG",
+        )
+
+    content = await file.read()
+    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if len(content) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Файл слишком большой. Максимум {settings.MAX_UPLOAD_SIZE_MB} МБ",
+        )
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Файл пустой")
+
+    filename = f"{uuid.uuid4()}{AVATAR_EXT[file.content_type]}"
+    rel_path = f"avatars/{filename}"
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, "avatars"), exist_ok=True)
+    with open(os.path.join(settings.UPLOAD_DIR, rel_path), "wb") as f:
+        f.write(content)
+
+    current_user.avatar_path = rel_path
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user

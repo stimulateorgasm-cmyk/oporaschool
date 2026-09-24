@@ -87,6 +87,7 @@ class Teacher(Base):
         String(20), default=TeacherStatus.active, nullable=False, index=True
     )
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    photo_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -96,6 +97,10 @@ class Teacher(Base):
     deleted_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    @property
+    def photo_url(self) -> Optional[str]:
+        return f"/uploads/{self.photo_path}" if self.photo_path else None
 
     user: Mapped[Optional["User"]] = relationship(
         "User", back_populates="teacher_profile"

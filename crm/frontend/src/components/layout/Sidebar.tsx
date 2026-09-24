@@ -63,7 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
       to: '/teachers',
       label: 'Педагоги',
       icon: GraduationCap,
-      roles: ['manager', 'administrator', 'teacher'],
+      roles: ['manager'],
     },
     {
       to: '/salary',

@@ -117,6 +117,7 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     phone: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    avatar_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[UserStatus] = mapped_column(
         String(20), default=UserStatus.active, nullable=False, index=True
@@ -148,6 +149,11 @@ class User(Base):
     teacher_profile: Mapped[Optional["Teacher"]] = relationship(
         "Teacher", back_populates="user", uselist=False
     )
+
+    @property
+    def avatar_url(self) -> Optional[str]:
+        """Относительный путь к аватарке; фронт резолвит через свой API-базис."""
+        return f"/uploads/{self.avatar_path}" if self.avatar_path else None
 
 
 class RefreshToken(Base):

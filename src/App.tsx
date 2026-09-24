@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search, Filter, Calendar, MapPin, Phone, MessageSquare, Clock,
   ChevronLeft, ChevronRight, Star, X, Check, Plus, Edit2, Trash2,
@@ -94,6 +94,51 @@ export default function App() {
     localStorage.setItem('opora_bitrix', JSON.stringify(bitrixConfig));
   }, [bitrixConfig]);
 
+  // C7: синхронизация педагогов с CRM (статика — фолбэк при ошибке/офлайне)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('https://crm.opora.school/api/v1/public/teachers');
+        if (!res.ok) return;
+        const crm: Array<{ id: string; name: string; photo_url: string | null; bio: string | null; subjects: string[] }> = await res.json();
+        if (!Array.isArray(crm) || crm.length === 0) return;
+        if (cancelled) return;
+        setTeachers((prev) => {
+          const crmByName = new Map(crm.map((c) => [c.name.trim().toLowerCase(), c]));
+          const prevNames = new Set(prev.map((t) => t.name.trim().toLowerCase()));
+          const merged = prev.map((t) => {
+            const c = crmByName.get(t.name.trim().toLowerCase());
+            if (!c) return t;
+            return {
+              ...t,
+              photoUrl: c.photo_url || t.photoUrl,
+              bio: c.bio || t.bio,
+              subjects: c.subjects.length ? c.subjects : t.subjects,
+            };
+          });
+          for (const c of crm) {
+            if (prevNames.has(c.name.trim().toLowerCase())) continue;
+            merged.push({
+              id: 'crm-' + c.id,
+              name: c.name,
+              photoUrl: c.photo_url || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=600&auto=format&fit=crop',
+              subjects: c.subjects || [],
+              bio: c.bio || '',
+              education: '',
+              experience: '',
+              avatarBg: 'bg-teal-100 text-teal-800',
+            });
+          }
+          return merged;
+        });
+      } catch {
+        // офлайн/ошибка — остаёмся на статике
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // --- UI States ---
 
   // trial button subject picker
@@ -131,7 +176,7 @@ export default function App() {
   const cardsPerView = () => isMobile() ? 1 : 3;
 
   // teacher slider -- перемешиваем всех кроме Надежды (t7), она всегда первая
-  const [shuffledTeachers] = useState<Teacher[]>(() => {
+  const shuffledTeachers = useMemo<Teacher[]>(() => {
     const shumkina = teachers.find(t => t.id === 't7');
     const others = teachers.filter(t => t.id !== 't7');
     // Fisher-Yates shuffle
@@ -140,7 +185,7 @@ export default function App() {
       [others[i], others[j]] = [others[j], others[i]];
     }
     return shumkina ? [shumkina, ...others] : teachers;
-  });
+  }, [teachers]);
 
   const teacherSliderRef = useRef<HTMLDivElement>(null);
 

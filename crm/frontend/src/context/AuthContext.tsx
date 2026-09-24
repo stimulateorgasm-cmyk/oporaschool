@@ -8,6 +8,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (phone: string, password: string) => Promise<void>;
   logout: () => void;
+  updateUser: (user: UserRead) => void;
   hasRole: (roles: string[]) => boolean;
   isManager: boolean;
   isAdmin: boolean;
@@ -81,6 +82,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
+  const updateUser = (u: UserRead) => {
+    setUser(u);
+  };
+
   const userRoles = user?.roles?.map((r) => r.code) || [];
 
   const hasRole = (roles: string[]) => {
@@ -100,6 +105,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         login,
         logout,
+        updateUser,
         hasRole,
         isManager,
         isAdmin,

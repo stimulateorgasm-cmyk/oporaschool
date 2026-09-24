@@ -1,7 +1,9 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.database import Base, engine
@@ -49,3 +51,11 @@ async def health_check():
 
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# Отдача аватарок/фото педагогов (под /api/* — проксируется Caddy без правок конфига)
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+app.mount(
+    f"{settings.API_V1_STR}/uploads",
+    StaticFiles(directory=settings.UPLOAD_DIR),
+    name="uploads",
+)

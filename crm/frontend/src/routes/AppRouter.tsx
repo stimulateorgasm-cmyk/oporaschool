@@ -103,11 +103,11 @@ export const AppRouter: React.FC = () => {
           }
         />
 
-        {/* Manager, Admin, Teacher */}
+        {/* Manager only */}
         <Route
           path="/teachers"
           element={
-            <ProtectedRoute allowedRoles={['manager', 'administrator', 'teacher']}>
+            <ProtectedRoute allowedRoles={['manager']}>
               <Teachers />
             </ProtectedRoute>
           }
