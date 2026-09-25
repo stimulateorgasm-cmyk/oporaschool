@@ -115,7 +115,9 @@ async def create_teacher(
 
     await db.commit()
     await db.refresh(teacher)
-    return await get_teachers(status=None, db=db, current_user=current_user)
+    # загрузить связанные subjects/rates для корректного ответа
+    await db.refresh(teacher, attribute_names=["subjects", "rates"])
+    return await _teacher_read(db, teacher)
 
 
 @router.post("/{teacher_id}/rates", response_model=TeacherRateRead, summary="Добавить ставку педагога (Руководитель)")
