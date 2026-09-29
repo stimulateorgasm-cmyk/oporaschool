@@ -19,14 +19,24 @@ export const LessonMoveModal: React.FC<LessonMoveModalProps> = ({
 }) => {
   if (!lesson) return null;
 
-  const originalDate = lesson.starts_at.split('T')[0];
+  const toLocalDate = (iso: string) => {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso.split('T')[0];
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  };
+  const toLocalTime = (iso: string) => {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso.includes('T') ? iso.split('T')[1].substring(0, 5) : '15:00';
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
+  const originalDate = toLocalDate(lesson.starts_at);
   const [newDate, setNewDate] = useState(originalDate);
-  const [newStartTime, setNewStartTime] = useState(
-    lesson.starts_at.includes('T') ? lesson.starts_at.split('T')[1].substring(0, 5) : '15:00'
-  );
-  const [newEndTime, setNewEndTime] = useState(
-    lesson.ends_at.includes('T') ? lesson.ends_at.split('T')[1].substring(0, 5) : '16:00'
-  );
+  const [newStartTime, setNewStartTime] = useState(toLocalTime(lesson.starts_at));
+  const [newEndTime, setNewEndTime] = useState(toLocalTime(lesson.ends_at));
   const [newRoomId, setNewRoomId] = useState(lesson.room_id);
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);

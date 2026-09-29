@@ -228,10 +228,10 @@ export const Dashboard: React.FC = () => {
                   <div className="flex items-start gap-3">
                     <div className="text-center font-mono py-1 px-2 rounded-lg bg-stone-100 border border-stone-200 text-stone-800 text-xs shrink-0">
                       <div className="font-bold">
-                        {lesson.starts_at.includes('T') ? lesson.starts_at.split('T')[1].substring(0, 5) : '14:00'}
+                        {(() => { const d = new Date(lesson.starts_at); return isNaN(d.getTime()) ? (lesson.starts_at.includes('T') ? lesson.starts_at.split('T')[1].substring(0, 5) : '14:00') : `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })()}
                       </div>
                       <div className="text-[10px] text-stone-500">
-                        {lesson.ends_at.includes('T') ? lesson.ends_at.split('T')[1].substring(0, 5) : '15:00'}
+                        {(() => { const d = new Date(lesson.ends_at); return isNaN(d.getTime()) ? (lesson.ends_at.includes('T') ? lesson.ends_at.split('T')[1].substring(0, 5) : '15:00') : `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; })()}
                       </div>
                     </div>
 

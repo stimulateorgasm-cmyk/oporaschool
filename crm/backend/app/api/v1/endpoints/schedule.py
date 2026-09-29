@@ -156,7 +156,7 @@ async def get_occupancy(
             "room_id": l.room_id,
             "starts_at": l.starts_at,
             "ends_at": l.ends_at,
-            "status": l.status.value if l.status else None,
+            "status": getattr(l.status, "value", l.status),
         }
         if is_staff:
             slot["child_name"] = l.child.full_name if l.child else None
@@ -266,7 +266,7 @@ async def mark_attendance(
     return {
         "status": "success",
         "message": f"Посещаемость отмечена: {data.attendance_status.value}",
-        "lesson_status": updated.status.value,
+        "lesson_status": getattr(updated.status, "value", updated.status),
         "remaining_balance": rem_balance,
     }
 

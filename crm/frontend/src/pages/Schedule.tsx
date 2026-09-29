@@ -34,11 +34,24 @@ const STATUS_STYLE: Record<string, string> = {
 const formatLabel = (f: string) => (f === 'individual' ? 'Индивидуально' : 'Группа');
 
 const fmtTime = (iso: string) => {
-  const t = iso.includes('T') ? iso.split('T')[1] : '00:00:00';
-  return t.substring(0, 5);
+  // Парсим ISO с учётом таймзоны: бэк отдаёт в UTC ('Z'), браузер приведёт к локальной.
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) {
+    const t = iso.includes('T') ? iso.split('T')[1] : '00:00:00';
+    return t.substring(0, 5);
+  }
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-const lessonDate = (iso: string) => iso.split('T')[0];
+const lessonDate = (iso: string) => {
+  // Локальная дата из ISO (не UTC-подстрока), чтобы день занятия не смещался.
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso.split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
 const toISODate = (d: Date) => {
   const y = d.getFullYear();
@@ -67,6 +80,10 @@ const startOfWeek = (d: Date) => {
 };
 
 const minsOf = (iso: string) => {
+  const d = new Date(iso);
+  if (!isNaN(d.getTime())) {
+    return d.getHours() * 60 + d.getMinutes();
+  }
   const t = iso.includes('T') ? iso.split('T')[1] : '00:00:00';
   const [h, m] = t.split(':').map(Number);
   return (h || 0) * 60 + (m || 0);

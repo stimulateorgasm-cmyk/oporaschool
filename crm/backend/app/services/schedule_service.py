@@ -182,7 +182,9 @@ class ScheduleService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Занятие не найдено",
             )
-        if lesson.status == LessonStatus.completed:
+        # status хранится как String(20), при чтении из БД приходит строкой — нормализуем для сравнения
+        lesson_status_str = getattr(lesson.status, "value", lesson.status)
+        if lesson_status_str == LessonStatus.completed.value:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Нельзя перенести уже проведенное занятие",
@@ -205,7 +207,7 @@ class ScheduleService:
             "starts_at": lesson.starts_at.isoformat(),
             "ends_at": lesson.ends_at.isoformat(),
             "room_id": str(lesson.room_id),
-            "status": lesson.status.value,
+            "status": getattr(lesson.status, "value", lesson.status),
         }
 
         lesson.starts_at = new_starts_at
