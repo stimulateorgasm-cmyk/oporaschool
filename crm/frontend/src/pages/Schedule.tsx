@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { LessonRead, RoomRead, TeacherRead, ChildRead, ChildSubjectRead, OccupancySlot } from '../types';
+import {
+  LessonRead,
+  RoomRead,
+  TeacherRead,
+  ChildRead,
+  ChildSubjectRead,
+  SubjectRead,
+  GroupRead,
+  OccupancySlot,
+} from '../types';
 import { useAuth } from '../context/AuthContext';
 import {
   Calendar as CalendarIcon,
@@ -32,6 +41,9 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 const formatLabel = (f: string) => (f === 'individual' ? 'Индивидуально' : 'Группа');
+
+// У группового занятия child_name пуст — показываем имя группы
+const displayName = (l: LessonRead) => l.child_name || l.group_name || '—';
 
 const fmtTime = (iso: string) => {
   // Парсим ISO с учётом таймзоны: бэк отдаёт в UTC ('Z'), браузер приведёт к локальной.
@@ -181,7 +193,7 @@ const Timeline: React.FC<TimelineProps> = ({ columns, bucketKey, lessons, occupa
                   <button
                     key={l.id}
                     onClick={() => onLessonClick(l)}
-                    title={`${l.child_name} • ${l.subject_name} • ${l.teacher_name}`}
+                    title={`${displayName(l)} • ${l.subject_name} • ${l.teacher_name}`}
                     className={`absolute left-1 right-1 overflow-hidden rounded-md border px-1.5 py-1 text-left shadow-2xs ${
                       STATUS_STYLE[l.status] || STATUS_STYLE.scheduled
                     }`}
@@ -191,7 +203,7 @@ const Timeline: React.FC<TimelineProps> = ({ columns, bucketKey, lessons, occupa
                     }}
                   >
                     <div className="text-[10px] font-bold leading-tight truncate">
-                      {fmtTime(l.starts_at)} · {l.child_name}
+                      {fmtTime(l.starts_at)} · {displayName(l)}
                     </div>
                     <div className="text-[10px] leading-tight truncate opacity-80">{l.subject_name}</div>
                   </button>
@@ -221,10 +233,13 @@ export const Schedule: React.FC = () => {
   const [teachers, setTeachers] = useState<TeacherRead[]>([]);
   const [children, setChildren] = useState<ChildRead[]>([]);
   const [childSubjects, setChildSubjects] = useState<ChildSubjectRead[]>([]);
+  const [subjects, setSubjects] = useState<SubjectRead[]>([]);
+  const [groups, setGroups] = useState<GroupRead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Modals
   const [isLessonModalOpen, setIsLessonModalOpen] = useState(false);
+  const [editingLesson, setEditingLesson] = useState<LessonRead | null>(null);
   const [selectedLesson, setSelectedLesson] = useState<LessonRead | null>(null);
   const [selectedLessonForAttendance, setSelectedLessonForAttendance] = useState<LessonRead | null>(null);
   const [selectedLessonForMove, setSelectedLessonForMove] = useState<LessonRead | null>(null);
@@ -283,9 +298,16 @@ export const Schedule: React.FC = () => {
     if (!isAdmin) return;
     (async () => {
       try {
-        const [clients, cs] = await Promise.all([api.getClients(), api.getChildSubjects()]);
+        const [clients, cs, subs, grps] = await Promise.all([
+          api.getClients(),
+          api.getChildSubjects(),
+          api.getSubjects(),
+          api.getGroups(),
+        ]);
         setChildren(clients.flatMap((p) => p.children));
         setChildSubjects(cs);
+        setSubjects(subs);
+        setGroups(grps);
       } catch (err) {
         console.error('Failed to load lesson form data', err);
       }
@@ -557,7 +579,7 @@ export const Schedule: React.FC = () => {
                         key={l.id}
                         className={`text-[10px] leading-tight truncate px-1 py-0.5 rounded border ${STATUS_STYLE[l.status] || STATUS_STYLE.scheduled}`}
                       >
-                        {fmtTime(l.starts_at)} {l.child_name}
+                        {fmtTime(l.starts_at)} {displayName(l)}
                       </div>
                     ))}
                     {dayLessons.length > 3 && (
@@ -578,10 +600,33 @@ export const Schedule: React.FC = () => {
         rooms={rooms}
         children={children}
         childSubjects={childSubjects}
+        teachers={teachers}
+        subjects={subjects}
+        groups={groups}
         defaultDate={anchor}
         onSubmit={async (data) => {
           await api.createLesson(data);
           await loadData();
+        }}
+      />
+
+      {/* Редактирование занятия (только руководитель/администратор) */}
+      <LessonModal
+        key={editingLesson?.id || 'edit-empty'}
+        isOpen={!!editingLesson}
+        onClose={() => setEditingLesson(null)}
+        rooms={rooms}
+        children={children}
+        childSubjects={childSubjects}
+        teachers={teachers}
+        subjects={subjects}
+        groups={groups}
+        editingLesson={editingLesson}
+        onUpdate={async (data) => {
+          if (editingLesson) {
+            await api.updateLesson(editingLesson.id, data);
+            await loadData();
+          }
         }}
       />
 
@@ -590,7 +635,7 @@ export const Schedule: React.FC = () => {
         isOpen={!!selectedLesson}
         onClose={() => setSelectedLesson(null)}
         title="Занятие"
-        subtitle={selectedLesson ? `${selectedLesson.subject_name} • ${selectedLesson.child_name}` : undefined}
+        subtitle={selectedLesson ? `${selectedLesson.subject_name} • ${displayName(selectedLesson)}` : undefined}
         maxWidth="sm"
       >
         {selectedLesson && (
@@ -636,6 +681,17 @@ export const Schedule: React.FC = () => {
               >
                 Перенести занятие
               </button>
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    setEditingLesson(selectedLesson);
+                    setSelectedLesson(null);
+                  }}
+                  className="px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200"
+                >
+                  Редактировать
+                </button>
+              )}
               <button
                 onClick={() => {
                   handleCancelLesson(selectedLesson);

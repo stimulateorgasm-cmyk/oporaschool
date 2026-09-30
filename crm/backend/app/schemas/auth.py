@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from app.models.enums import UserStatus
@@ -70,6 +71,11 @@ class UserUpdate(BaseModel):
 
 class UserRead(UserBase):
     id: uuid.UUID
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    work_schedule: Optional[str] = None
+    rate: Optional[Decimal] = None
+    shifts_count: Optional[int] = None
     last_login_at: Optional[datetime] = None
     created_at: datetime
     roles: List[RoleRead] = []
@@ -81,6 +87,11 @@ class UserRead(UserBase):
 
 class MeUpdate(BaseModel):
     full_name: Optional[str] = Field(None, min_length=2, max_length=200)
+    first_name: Optional[str] = Field(None, max_length=100)
+    last_name: Optional[str] = Field(None, max_length=100)
+    work_schedule: Optional[str] = None
+    rate: Optional[Decimal] = None
+    shifts_count: Optional[int] = None
     phone: Optional[str] = Field(None, min_length=10, max_length=20)
     current_password: Optional[str] = None
     new_password: Optional[str] = Field(None, min_length=6)

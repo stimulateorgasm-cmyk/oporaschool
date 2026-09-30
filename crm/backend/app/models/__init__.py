@@ -30,6 +30,7 @@ from app.models.enums import (
     MailingStatus,
     MessageStatus,
     PaymentMethod,
+    Recurrence,
     SalaryPaymentStatus,
     TeacherStatus,
     UserStatus,
@@ -43,7 +44,7 @@ from app.models.finance import (
     TeacherSalaryAccrual,
     TeacherSalaryPayment,
 )
-from app.models.schedule import Lesson, LessonHistory, Room
+from app.models.schedule import Group, GroupMember, Lesson, LessonHistory, Room
 from app.models.system import (
     AuditLog,
     Export,
@@ -67,6 +68,8 @@ __all__ = [
     "Room",
     "Lesson",
     "LessonHistory",
+    "Group",
+    "GroupMember",
     "LessonPackage",
     "ClientPayment",
     "LessonBalanceTransaction",
@@ -92,6 +95,7 @@ __all__ = [
     "LessonFormat",
     "PaymentMethod",
     "BalanceTransactionType",
+    "Recurrence",
     "SalaryPaymentStatus",
     "MessageStatus",
     "MailingStatus",

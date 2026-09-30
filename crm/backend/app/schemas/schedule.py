@@ -8,7 +8,9 @@ from app.models.enums import (
     LessonFormat,
     LessonPaymentStatus,
     LessonStatus,
+    Recurrence,
 )
+from app.schemas.client import ChildRead
 
 
 class RoomBase(BaseModel):
@@ -30,13 +32,27 @@ class RoomRead(RoomBase):
 
 
 class LessonCreate(BaseModel):
-    child_id: uuid.UUID
+    child_id: Optional[uuid.UUID] = None
+    group_id: Optional[uuid.UUID] = None
     subject_id: uuid.UUID
     teacher_id: uuid.UUID
     room_id: uuid.UUID
     starts_at: datetime
     ends_at: datetime
-    attachment_id: uuid.UUID = Field(..., description="Обязательное вложение (скрин/документ)")
+    attachment_id: Optional[uuid.UUID] = None
+    comment: Optional[str] = None
+    recurrence: Recurrence = Recurrence.once
+    occurrences: int = Field(default=1, ge=1, le=52, description="Кол-во занятий при повторе")
+
+
+class LessonUpdate(BaseModel):
+    child_id: Optional[uuid.UUID] = None
+    subject_id: Optional[uuid.UUID] = None
+    teacher_id: Optional[uuid.UUID] = None
+    room_id: Optional[uuid.UUID] = None
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    attachment_id: Optional[uuid.UUID] = None
     comment: Optional[str] = None
 
 
@@ -74,12 +90,14 @@ class LessonHistoryRead(BaseModel):
 
 class LessonRead(BaseModel):
     id: uuid.UUID
-    child_subject_id: uuid.UUID
-    child_id: uuid.UUID
-    child_name: str
+    child_subject_id: Optional[uuid.UUID] = None
+    child_id: Optional[uuid.UUID] = None
+    child_name: Optional[str] = None
     parent_id: Optional[uuid.UUID] = None
     parent_name: Optional[str] = None
     parent_phone: Optional[str] = None
+    group_id: Optional[uuid.UUID] = None
+    group_name: Optional[str] = None
     subject_id: uuid.UUID
     subject_name: str
     teacher_id: uuid.UUID
@@ -98,5 +116,26 @@ class LessonRead(BaseModel):
     attachment_id: Optional[uuid.UUID] = None
     created_at: datetime
     history: List[LessonHistoryRead] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GroupCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=150)
+
+
+class GroupUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=150)
+
+
+class GroupMemberAdd(BaseModel):
+    child_id: uuid.UUID
+
+
+class GroupRead(BaseModel):
+    id: uuid.UUID
+    name: str
+    created_at: datetime
+    children: List[ChildRead] = []
 
     model_config = ConfigDict(from_attributes=True)

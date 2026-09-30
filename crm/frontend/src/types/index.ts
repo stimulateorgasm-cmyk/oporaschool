@@ -53,6 +53,12 @@ export enum LessonFormat {
   group = 'group',
 }
 
+export enum Recurrence {
+  once = 'once',
+  weekly = 'weekly',
+  twice_weekly = 'twice_weekly',
+}
+
 export enum PaymentMethod {
   cash = 'cash',
   card = 'card',
@@ -130,6 +136,11 @@ export interface UserRead {
   roles: RoleRead[];
   teacher_id?: string;
   avatar_url?: string;
+  first_name?: string;
+  last_name?: string;
+  work_schedule?: string;
+  rate?: number | string;
+  shifts_count?: number;
 }
 
 export interface MeUpdate {
@@ -137,6 +148,11 @@ export interface MeUpdate {
   phone?: string;
   current_password?: string;
   new_password?: string;
+  first_name?: string;
+  last_name?: string;
+  work_schedule?: string;
+  rate?: number | string;
+  shifts_count?: number;
 }
 
 export interface UserCreate {
@@ -338,13 +354,27 @@ export interface RoomCreate {
 }
 
 export interface LessonCreate {
-  child_id: string;
+  child_id?: string;
+  group_id?: string;
   subject_id: string;
   teacher_id: string;
   room_id: string;
   starts_at: string;
   ends_at: string;
-  attachment_id: string;
+  attachment_id?: string;
+  comment?: string;
+  recurrence?: Recurrence;
+  occurrences?: number;
+}
+
+export interface LessonUpdate {
+  child_id?: string;
+  subject_id?: string;
+  teacher_id?: string;
+  room_id?: string;
+  starts_at?: string;
+  ends_at?: string;
+  attachment_id?: string;
   comment?: string;
 }
 
@@ -378,9 +408,11 @@ export interface LessonHistoryRead {
 
 export interface LessonRead {
   id: string;
-  child_subject_id: string;
-  child_id: string;
-  child_name: string;
+  child_subject_id?: string;
+  child_id?: string;
+  child_name?: string;
+  group_id?: string;
+  group_name?: string;
   parent_id?: string;
   parent_name?: string;
   parent_phone?: string;
@@ -402,6 +434,22 @@ export interface LessonRead {
   attachment_id?: string;
   created_at: string;
   history: LessonHistoryRead[];
+}
+
+// ---------------- GROUPS ----------------
+export interface GroupRead {
+  id: string;
+  name: string;
+  created_at: string;
+  children: ChildRead[];
+}
+
+export interface GroupCreate {
+  name: string;
+}
+
+export interface GroupUpdate {
+  name?: string;
 }
 
 export interface OccupancySlot {

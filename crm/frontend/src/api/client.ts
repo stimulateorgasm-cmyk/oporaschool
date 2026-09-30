@@ -21,8 +21,13 @@ import {
   ParentRead,
   ParentUpdate,
   ChildUpdate,
+  GroupCreate,
+  GroupRead,
+  GroupUpdate,
+  LessonUpdate,
   PaymentCreate,
   PaymentRead,
+  Recurrence,
   RoomCreate,
   RoomRead,
   SubjectBalanceSummary,
@@ -1264,11 +1269,52 @@ class ApiClient {
     return this.request<LessonRead[]>(`/schedule/lessons${qs}`);
   }
 
-  public async createLesson(data: LessonCreate): Promise<LessonRead> {
-    return this.request<LessonRead>('/schedule/lessons', {
+  public async createLesson(data: LessonCreate): Promise<LessonRead[]> {
+    return this.request<LessonRead[]>('/schedule/lessons', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  }
+
+  public async updateLesson(lessonId: string, data: LessonUpdate): Promise<LessonRead> {
+    return this.request<LessonRead>(`/schedule/lessons/${lessonId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Groups
+  public async getGroups(): Promise<GroupRead[]> {
+    return this.request<GroupRead[]>('/groups');
+  }
+
+  public async createGroup(data: GroupCreate): Promise<GroupRead> {
+    return this.request<GroupRead>('/groups', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async updateGroup(groupId: string, data: GroupUpdate): Promise<GroupRead> {
+    return this.request<GroupRead>(`/groups/${groupId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async deleteGroup(groupId: string): Promise<{ status: string; message: string }> {
+    return this.request(`/groups/${groupId}`, { method: 'DELETE' });
+  }
+
+  public async addGroupMember(groupId: string, childId: string): Promise<GroupRead> {
+    return this.request<GroupRead>(`/groups/${groupId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ child_id: childId }),
+    });
+  }
+
+  public async removeGroupMember(groupId: string, childId: string): Promise<GroupRead> {
+    return this.request<GroupRead>(`/groups/${groupId}/members/${childId}`, { method: 'DELETE' });
   }
 
   public async getOccupancy(params?: { from_date?: string; to_date?: string }): Promise<OccupancySlot[]> {

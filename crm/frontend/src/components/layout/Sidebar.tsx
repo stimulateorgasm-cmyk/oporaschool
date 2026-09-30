@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
+  UsersRound,
   Calendar,
   CreditCard,
   WalletCards,
@@ -39,6 +40,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onCloseMobile }) => {
       to: '/clients',
       label: 'Клиенты и Дети',
       icon: Users,
+      roles: ['manager', 'administrator'],
+    },
+    {
+      to: '/groups',
+      label: 'Группы',
+      icon: UsersRound,
       roles: ['manager', 'administrator'],
     },
     {

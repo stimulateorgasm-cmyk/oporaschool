@@ -56,6 +56,12 @@ class LessonFormat(str, enum.Enum):
     group = "group"
 
 
+class Recurrence(str, enum.Enum):
+    once = "once"
+    weekly = "weekly"
+    twice_weekly = "twice_weekly"
+
+
 class PaymentMethod(str, enum.Enum):
     cash = "cash"
     card = "card"

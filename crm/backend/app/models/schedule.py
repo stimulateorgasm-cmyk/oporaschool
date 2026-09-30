@@ -56,15 +56,21 @@ class Lesson(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    child_subject_id: Mapped[uuid.UUID] = mapped_column(
+    child_subject_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("child_subjects.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
-    child_id: Mapped[uuid.UUID] = mapped_column(
+    child_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("children.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
+        index=True,
+    )
+    group_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("groups.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     subject_id: Mapped[uuid.UUID] = mapped_column(
@@ -143,6 +149,7 @@ class Lesson(Base):
 
     child_subject: Mapped["ChildSubject"] = relationship("ChildSubject", back_populates="lessons")
     child: Mapped["Child"] = relationship("Child", back_populates="lessons", lazy="joined")
+    group: Mapped[Optional["Group"]] = relationship("Group", back_populates="lessons", lazy="joined")
     subject: Mapped["Subject"] = relationship("Subject", lazy="joined")
     teacher: Mapped["Teacher"] = relationship("Teacher", back_populates="lessons", lazy="joined")
     room: Mapped["Room"] = relationship("Room", back_populates="lessons", lazy="joined")
@@ -184,3 +191,48 @@ class LessonHistory(Base):
     )
 
     lesson: Mapped["Lesson"] = relationship("Lesson", back_populates="history")
+
+
+class Group(Base):
+    __tablename__ = "groups"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(150), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    members: Mapped[List["GroupMember"]] = relationship(
+        "GroupMember",
+        back_populates="group",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    lessons: Mapped[List["Lesson"]] = relationship("Lesson", back_populates="group")
+
+    @property
+    def children(self):
+        return [m.child for m in self.members if m.child]
+
+
+class GroupMember(Base):
+    __tablename__ = "group_members"
+
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("groups.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    child_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("children.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    group: Mapped["Group"] = relationship("Group", back_populates="members")
+    child: Mapped["Child"] = relationship("Child")

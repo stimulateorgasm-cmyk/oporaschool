@@ -168,6 +168,17 @@ async def update_me(
         if field in payload and payload[field] is not None:
             setattr(current_user, field, payload[field])
 
+    # служебные поля (админ): имя/фамилия/график/ставка/смены
+    for field in ("first_name", "last_name", "work_schedule", "rate", "shifts_count"):
+        if field in payload:
+            setattr(current_user, field, payload[field])
+
+    # ФИО пересобирается как «Фамилия Имя», если пришли раздельные имя/фамилия
+    if "first_name" in payload or "last_name" in payload:
+        parts = [p for p in (current_user.last_name, current_user.first_name) if p]
+        if parts:
+            current_user.full_name = " ".join(parts)
+
     await db.commit()
     await db.refresh(current_user)
     return current_user

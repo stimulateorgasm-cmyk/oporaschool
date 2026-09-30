@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { DashboardMetrics, LessonRead, ParentRead, ChildSubjectRead } from '../types';
+import { DashboardMetrics, LessonRead, ParentRead, ChildSubjectRead, SubjectRead, TeacherRead, GroupRead } from '../types';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -26,6 +26,9 @@ export const Dashboard: React.FC = () => {
   const [parents, setParents] = useState<ParentRead[]>([]);
   const [rooms, setRooms] = useState<any[]>([]);
   const [childSubjects, setChildSubjects] = useState<ChildSubjectRead[]>([]);
+  const [subjects, setSubjects] = useState<SubjectRead[]>([]);
+  const [teachers, setTeachers] = useState<TeacherRead[]>([]);
+  const [groups, setGroups] = useState<GroupRead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Modals state
@@ -37,18 +40,24 @@ export const Dashboard: React.FC = () => {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [m, l, p, r, cs] = await Promise.all([
+      const [m, l, p, r, cs, s, t, g] = await Promise.all([
         api.getDashboardMetrics(),
         api.getLessons(),
         api.getClients(),
         api.getRooms(),
         api.getChildSubjects(),
+        api.getSubjects(),
+        api.getTeachers(),
+        api.getGroups(),
       ]);
       setMetrics(m);
       setTodayLessons(l);
       setParents(p);
       setRooms(r);
       setChildSubjects(cs);
+      setSubjects(s);
+      setTeachers(t);
+      setGroups(g);
     } catch (err) {
       console.error('Failed to load dashboard data', err);
     } finally {
@@ -354,6 +363,9 @@ export const Dashboard: React.FC = () => {
         rooms={rooms}
         children={parents.flatMap((p) => p.children)}
         childSubjects={childSubjects}
+        teachers={teachers}
+        subjects={subjects}
+        groups={groups}
         onSubmit={async (data) => {
           await api.createLesson(data);
           await loadData();

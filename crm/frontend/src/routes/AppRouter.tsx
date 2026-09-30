@@ -6,6 +6,7 @@ import { Login } from '../pages/Login';
 import { Dashboard } from '../pages/Dashboard';
 import { Directions } from '../pages/Directions';
 import { Clients } from '../pages/Clients';
+import { Groups } from '../pages/Groups';
 import { Schedule } from '../pages/Schedule';
 import { Payments } from '../pages/Payments';
 import { Balance } from '../pages/Balance';
@@ -69,6 +70,16 @@ export const AppRouter: React.FC = () => {
           element={
             <ProtectedRoute allowedRoles={['manager', 'administrator']}>
               <Clients />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Manager & Admin */}
+        <Route
+          path="/groups"
+          element={
+            <ProtectedRoute allowedRoles={['manager', 'administrator']}>
+              <Groups />
             </ProtectedRoute>
           }
         />

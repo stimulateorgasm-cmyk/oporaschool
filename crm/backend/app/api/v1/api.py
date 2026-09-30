@@ -5,6 +5,7 @@ from app.api.v1.endpoints import (
     auth,
     balance,
     clients,
+    groups,
     payments,
     public,
     salary,
@@ -20,6 +21,7 @@ api_router.include_router(teachers.router)
 api_router.include_router(academic.router)
 api_router.include_router(attachments.router)
 api_router.include_router(schedule.router)
+api_router.include_router(groups.router)
 api_router.include_router(payments.router)
 api_router.include_router(balance.router)
 api_router.include_router(salary.router)

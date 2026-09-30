@@ -11,11 +11,16 @@ interface ProfileModalProps {
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onUpdated }) => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [fullName, setFullName] = useState(user?.full_name || '');
   const [phone, setPhone] = useState(user?.phone || '');
+  const [firstName, setFirstName] = useState(user?.first_name || '');
+  const [lastName, setLastName] = useState(user?.last_name || '');
+  const [workSchedule, setWorkSchedule] = useState(user?.work_schedule || '');
+  const [rate, setRate] = useState<string>(user?.rate != null ? String(user.rate) : '');
+  const [shiftsCount, setShiftsCount] = useState<string>(user?.shifts_count != null ? String(user.shifts_count) : '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,6 +38,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onU
       const payload: any = {};
       if (fullName.trim() !== user?.full_name) payload.full_name = fullName.trim();
       if (phone.trim() !== user?.phone) payload.phone = phone.trim();
+      // Служебные поля доступны только руководителю/администратору (пункт 1)
+      if (isAdmin) {
+        if (firstName.trim() !== (user?.first_name || '')) payload.first_name = firstName.trim();
+        if (lastName.trim() !== (user?.last_name || '')) payload.last_name = lastName.trim();
+        if (workSchedule.trim() !== (user?.work_schedule || '')) payload.work_schedule = workSchedule.trim();
+        if (rate !== (user?.rate != null ? String(user.rate) : '')) payload.rate = rate === '' ? null : Number(rate);
+        if (shiftsCount !== (user?.shifts_count != null ? String(user.shifts_count) : ''))
+          payload.shifts_count = shiftsCount === '' ? null : Number(shiftsCount);
+      }
       if (newPassword) {
         payload.current_password = currentPassword;
         payload.new_password = newPassword;
@@ -133,6 +147,66 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, onU
             </div>
           </div>
         </div>
+
+        {/* Служебные поля (руководитель / администратор) */}
+        {isAdmin && (
+          <div className="pt-3 border-t border-stone-100 space-y-3">
+            <div className="text-xs font-bold text-stone-700">Служебная информация</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 mb-1">Имя</label>
+                <input
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 mb-1">Фамилия</label>
+                <input
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-stone-700 mb-1">График работы</label>
+                <input
+                  type="text"
+                  value={workSchedule}
+                  onChange={(e) => setWorkSchedule(e.target.value)}
+                  placeholder="Например: Пн–Пт 10:00–18:00"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 mb-1">Ставка (₽/час)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                  placeholder="0"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 mb-1">Кол-во смен</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={shiftsCount}
+                  onChange={(e) => setShiftsCount(e.target.value)}
+                  placeholder="0"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Password */}
         <div className="pt-3 border-t border-stone-100">

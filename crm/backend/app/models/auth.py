@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import List, Optional
 from sqlalchemy import (
     Boolean,
@@ -7,6 +8,8 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
+    Numeric,
     String,
     Table,
     Text,
@@ -115,9 +118,15 @@ class User(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     full_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    first_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     phone: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     avatar_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # служебные поля админа (пункт 1)
+    work_schedule: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    shifts_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[UserStatus] = mapped_column(
         String(20), default=UserStatus.active, nullable=False, index=True

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.rbac import get_current_user, require_roles
 from app.models.academic import Teacher
 from app.models.auth import User
-from app.models.enums import AttendanceStatus, LessonStatus
+from app.models.enums import AttendanceStatus, LessonStatus, Recurrence
 from app.models.schedule import Lesson, Room
 from app.schemas.schedule import (
     LessonAttendanceRequest,
@@ -17,6 +17,7 @@ from app.schemas.schedule import (
     LessonCreate,
     LessonMoveRequest,
     LessonRead,
+    LessonUpdate,
     RoomCreate,
     RoomRead,
 )
@@ -32,8 +33,10 @@ def _build_lesson_read(l: Lesson) -> LessonRead:
         id=l.id,
         child_subject_id=l.child_subject_id,
         child_id=l.child_id,
-        child_name=l.child.full_name,
+        child_name=l.child.full_name if l.child else None,
         parent_id=l.child.parent_id if l.child else None,
+        group_id=l.group_id,
+        group_name=l.group.name if l.group else None,
         subject_id=l.subject_id,
         subject_name=l.subject.name,
         teacher_id=l.teacher_id,
@@ -53,6 +56,19 @@ def _build_lesson_read(l: Lesson) -> LessonRead:
         created_at=l.created_at,
         history=[],
     )
+
+
+def _recurrence_offsets(recurrence: Recurrence, occurrences: int) -> List[int]:
+    """Смещения в днях для серии занятий. weekly: +7; twice_weekly: +3/+4 попеременно."""
+    offsets: List[int] = []
+    day = 0
+    for i in range(occurrences):
+        offsets.append(day)
+        if recurrence == Recurrence.weekly:
+            day += 7
+        else:  # twice_weekly
+            day += 3 if i % 2 == 0 else 4
+    return offsets
 
 
 @router.get("/rooms", response_model=List[RoomRead], summary="Список кабинетов")
@@ -165,29 +181,71 @@ async def get_occupancy(
     return out
 
 
-@router.post("/lessons", response_model=LessonRead, summary="Создание занятия (с защитой от конфликтов)")
+@router.post("/lessons", response_model=List[LessonRead], summary="Создание занятия (с защитой от конфликтов и повтором)")
 async def create_lesson(
     data: LessonCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_roles(["administrator", "manager"])),
 ):
-    lesson = await ScheduleService.create_lesson(
+    occurrences = max(1, data.occurrences)
+    if data.recurrence in (Recurrence.weekly, Recurrence.twice_weekly):
+        offsets = _recurrence_offsets(data.recurrence, occurrences)
+    else:
+        offsets = [0]
+
+    created: List[Lesson] = []
+    for off in offsets:
+        lesson = await ScheduleService.create_lesson(
+            db=db,
+            child_id=data.child_id,
+            subject_id=data.subject_id,
+            teacher_id=data.teacher_id,
+            room_id=data.room_id,
+            starts_at=data.starts_at + timedelta(days=off),
+            ends_at=data.ends_at + timedelta(days=off),
+            attachment_id=data.attachment_id,
+            user_id=current_user.id,
+            comment=data.comment,
+            group_id=data.group_id,
+        )
+        created.append(lesson)
+
+    await db.commit()
+
+    ids = [l.id for l in created]
+    stmt = (
+        select(Lesson)
+        .where(Lesson.id.in_(ids))
+        .options(
+            selectinload(Lesson.child),
+            selectinload(Lesson.subject),
+            selectinload(Lesson.teacher),
+            selectinload(Lesson.room),
+            selectinload(Lesson.history),
+        )
+    )
+    loaded = {l.id: l for l in (await db.execute(stmt)).scalars().all()}
+    return [_build_lesson_read(loaded[l.id]) for l in created]
+
+
+@router.patch("/lessons/{lesson_id}", response_model=LessonRead, summary="Редактирование занятия")
+async def update_lesson(
+    lesson_id: uuid.UUID,
+    data: LessonUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(["administrator", "manager"])),
+):
+    updated = await ScheduleService.update_lesson(
         db=db,
-        child_id=data.child_id,
-        subject_id=data.subject_id,
-        teacher_id=data.teacher_id,
-        room_id=data.room_id,
-        starts_at=data.starts_at,
-        ends_at=data.ends_at,
-        attachment_id=data.attachment_id,
+        lesson_id=lesson_id,
+        payload=data.model_dump(exclude_unset=True),
         user_id=current_user.id,
-        comment=data.comment,
     )
     await db.commit()
 
     stmt = (
         select(Lesson)
-        .where(Lesson.id == lesson.id)
+        .where(Lesson.id == updated.id)
         .options(
             selectinload(Lesson.child),
             selectinload(Lesson.subject),

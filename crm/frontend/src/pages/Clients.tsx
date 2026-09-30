@@ -2,10 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import {
   ParentRead,
+  ParentCreate,
   ChildRead,
   ChildSubjectRead,
   SubjectRead,
   TeacherRead,
+  RoomRead,
+  GroupRead,
   ClientStatus,
   ChildStatus,
 } from '../types';
@@ -22,12 +25,14 @@ import {
   UserPlus,
   Pencil,
   Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import { ClientModal } from '../components/clients/ClientModal';
 import { ChildSubjectModal } from '../components/clients/ChildSubjectModal';
 import { ClientEditModal } from '../components/clients/ClientEditModal';
 import { ChildEditModal } from '../components/clients/ChildEditModal';
 import { PaymentModal } from '../components/payments/PaymentModal';
+import { LessonModal } from '../components/schedule/LessonModal';
 import { Modal } from '../components/common/Modal';
 
 const formatLabel = (f: string) => (f === 'individual' ? 'Индивидуально' : 'Группа');
@@ -37,6 +42,8 @@ export const Clients: React.FC = () => {
   const [subjects, setSubjects] = useState<SubjectRead[]>([]);
   const [teachers, setTeachers] = useState<TeacherRead[]>([]);
   const [childSubjects, setChildSubjects] = useState<ChildSubjectRead[]>([]);
+  const [rooms, setRooms] = useState<RoomRead[]>([]);
+  const [groups, setGroups] = useState<GroupRead[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [expandedParents, setExpandedParents] = useState<Record<string, boolean>>({});
@@ -49,6 +56,12 @@ export const Clients: React.FC = () => {
 
   // Attach Subject Modal
   const [attachingChild, setAttachingChild] = useState<{ id: string; name: string } | null>(null);
+  // после прикрепления направления к новому клиенту — сразу открыть расписание
+  const [afterAttachSchedule, setAfterAttachSchedule] = useState(false);
+
+  // Lesson Modal (запись занятия после создания клиента)
+  const [isLessonModalOpen, setIsLessonModalOpen] = useState(false);
+  const [schedulingChild, setSchedulingChild] = useState<{ id: string; name: string } | null>(null);
 
   // Edit modals
   const [editingParent, setEditingParent] = useState<ParentRead | null>(null);
@@ -63,16 +76,20 @@ export const Clients: React.FC = () => {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [c, s, t, cs] = await Promise.all([
+      const [c, s, t, cs, r, g] = await Promise.all([
         api.getClients({ search: search || undefined }),
         api.getSubjects(),
         api.getTeachers(),
         api.getChildSubjects(),
+        api.getRooms(),
+        api.getGroups(),
       ]);
       setClients(c);
       setSubjects(s);
       setTeachers(t);
       setChildSubjects(cs);
+      setRooms(r);
+      setGroups(g);
       const initialExpanded: Record<string, boolean> = {};
       c.forEach((p) => (initialExpanded[p.id] = true));
       setExpandedParents(initialExpanded);
@@ -122,6 +139,38 @@ export const Clients: React.FC = () => {
       alert(err.message || 'Ошибка открепления направления');
     }
   };
+
+  // Пункт 3: после создания клиента — цепочка «направление → занятие» для первого ребёнка
+  const handleCreateClient = async (data: ParentCreate) => {
+    const parent = await api.createClient(data);
+    await loadData();
+    const child = parent.children?.[0];
+    if (child) {
+      setAttachingChild({ id: child.id, name: child.full_name });
+      setAfterAttachSchedule(true);
+    }
+  };
+
+  // Пункт 2: возврат из архива в активные (история и дети не трогаются)
+  const handleUnarchiveParent = async (parent: ParentRead) => {
+    try {
+      await api.updateClient(parent.id, { status: ClientStatus.active });
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Ошибка возврата в активные');
+    }
+  };
+
+  const handleUnarchiveChild = async (child: ChildRead) => {
+    try {
+      await api.updateChild(child.id, { status: ChildStatus.active });
+      await loadData();
+    } catch (err: any) {
+      alert(err.message || 'Ошибка возврата в активные');
+    }
+  };
+
+  const allChildren = clients.flatMap((p) => p.children);
 
   const filteredClients = clients.filter((c) => {
     if (statusFilter === 'all') return true;
@@ -268,6 +317,20 @@ export const Clients: React.FC = () => {
                       <span>+ Ребенок</span>
                     </button>
 
+                    {parent.status === ClientStatus.archived && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUnarchiveParent(parent);
+                        }}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Вернуть в активные</span>
+                      </button>
+                    )}
+
                     <div className="p-1.5 text-stone-400">
                       {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </div>
@@ -309,6 +372,16 @@ export const Clients: React.FC = () => {
                                 </div>
 
                                 <div className="flex items-center gap-2 self-start sm:self-auto">
+                                  {child.status === ChildStatus.archived && (
+                                    <button
+                                      onClick={() => handleUnarchiveChild(child)}
+                                      title="Вернуть в активные"
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200"
+                                    >
+                                      <RotateCcw className="w-3.5 h-3.5" />
+                                      <span>Вернуть в активные</span>
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => setEditingChild(child)}
                                     title="Редактировать ребенка"
@@ -390,10 +463,7 @@ export const Clients: React.FC = () => {
       <ClientModal
         isOpen={isClientModalOpen}
         onClose={() => setIsClientModalOpen(false)}
-        onSubmit={async (data) => {
-          await api.createClient(data);
-          await loadData();
-        }}
+        onSubmit={handleCreateClient}
       />
 
       {editingParent && (
@@ -431,6 +501,13 @@ export const Clients: React.FC = () => {
           onSubmit={async (data) => {
             await api.attachSubjectToChild(data);
             await loadData();
+            // Пункт 3: после направления — сразу записать занятие новому ребёнку
+            if (afterAttachSchedule && attachingChild) {
+              setSchedulingChild({ id: attachingChild.id, name: attachingChild.name });
+              setIsLessonModalOpen(true);
+            }
+            setAttachingChild(null);
+            setAfterAttachSchedule(false);
           }}
         />
       )}
@@ -450,6 +527,27 @@ export const Clients: React.FC = () => {
           }}
         />
       )}
+
+      {/* Запись занятия после создания клиента (пункт 3) */}
+      <LessonModal
+        key={schedulingChild?.id || 'schedule-empty'}
+        isOpen={isLessonModalOpen}
+        onClose={() => {
+          setIsLessonModalOpen(false);
+          setSchedulingChild(null);
+        }}
+        rooms={rooms}
+        children={allChildren}
+        childSubjects={childSubjects}
+        teachers={teachers}
+        subjects={subjects}
+        groups={groups}
+        preselectedChildId={schedulingChild?.id}
+        onSubmit={async (data) => {
+          await api.createLesson(data);
+          await loadData();
+        }}
+      />
 
       {/* Add Child Dialog */}
       <Modal
