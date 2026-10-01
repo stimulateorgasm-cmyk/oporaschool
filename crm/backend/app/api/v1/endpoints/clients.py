@@ -42,9 +42,12 @@ async def get_parents(
         query = query.where(Parent.status == status)
     if search:
         search_pattern = f"%{search}%"
-        query = query.where(
-            (Parent.full_name.ilike(search_pattern)) | (Parent.phone.ilike(search_pattern))
-        )
+        # Поиск по ФИО/телефону родителя ИЛИ по имени ребёнка
+        query = query.outerjoin(Child, Child.parent_id == Parent.id).where(
+            (Parent.full_name.ilike(search_pattern))
+            | (Parent.phone.ilike(search_pattern))
+            | (Child.full_name.ilike(search_pattern))
+        ).distinct()
 
     query = query.order_by(Parent.created_at.desc()).offset(skip).limit(limit)
     result = await db.execute(query)

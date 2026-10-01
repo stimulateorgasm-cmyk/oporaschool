@@ -317,7 +317,7 @@ export const Clients: React.FC = () => {
                       <span>+ Ребенок</span>
                     </button>
 
-                    {parent.status === ClientStatus.archived && (
+                    {parent.status === ClientStatus.archived ? (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -328,6 +328,20 @@ export const Clients: React.FC = () => {
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                         <span>Вернуть в активные</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!window.confirm(`Архивировать карточку клиента «${parent.full_name}»?`)) return;
+                          api.updateClient(parent.id, { status: ClientStatus.archived }).then(loadData).catch((err: any) => alert(err.message || 'Ошибка архивации'));
+                        }}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-500 bg-stone-50 hover:bg-stone-100 border border-stone-200"
+                        title="Архивировать карточку"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Архивировать</span>
                       </button>
                     )}
 
@@ -372,7 +386,7 @@ export const Clients: React.FC = () => {
                                 </div>
 
                                 <div className="flex items-center gap-2 self-start sm:self-auto">
-                                  {child.status === ChildStatus.archived && (
+                                  {child.status === ChildStatus.archived ? (
                                     <button
                                       onClick={() => handleUnarchiveChild(child)}
                                       title="Вернуть в активные"
@@ -380,6 +394,18 @@ export const Clients: React.FC = () => {
                                     >
                                       <RotateCcw className="w-3.5 h-3.5" />
                                       <span>Вернуть в активные</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => {
+                                        if (!window.confirm(`Архивировать ребенка «${child.full_name}»?`)) return;
+                                        api.updateChild(child.id, { status: ChildStatus.archived }).then(loadData).catch((err: any) => alert(err.message || 'Ошибка архивации'));
+                                      }}
+                                      title="Архивировать"
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-stone-500 bg-stone-50 hover:bg-stone-100 rounded-md border border-stone-200"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <span>Архивировать</span>
                                     </button>
                                   )}
                                   <button
