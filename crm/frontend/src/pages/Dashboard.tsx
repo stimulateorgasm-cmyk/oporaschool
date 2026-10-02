@@ -376,6 +376,7 @@ export const Dashboard: React.FC = () => {
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
         parents={parents}
+        childSubjects={childSubjects}
         onSubmit={async (data) => {
           await api.createPayment(data);
           await loadData();

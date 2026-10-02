@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Modal } from '../common/Modal';
-import { ParentRead, PaymentCreate, PaymentMethod } from '../../types';
+import { ParentRead, PaymentCreate, PaymentMethod, ChildSubjectRead } from '../../types';
 
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   parents: ParentRead[];
+  childSubjects: ChildSubjectRead[];
   onSubmit: (data: PaymentCreate) => Promise<void>;
   preselectedParentId?: string;
 }
@@ -14,19 +15,25 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   isOpen,
   onClose,
   parents,
+  childSubjects,
   onSubmit,
   preselectedParentId,
 }) => {
   const [parentId, setParentId] = useState(preselectedParentId || parents[0]?.id || '');
   const selectedParent = parents.find((p) => p.id === parentId) || parents[0];
   const [childId, setChildId] = useState(selectedParent?.children[0]?.id || '');
-  const [childSubjectId, setChildSubjectId] = useState('cs-1');
-  const [amount, setAmount] = useState<number | string>(9600);
-  const [lessonsCount, setLessonsCount] = useState<number>(8);
+  const [childSubjectId, setChildSubjectId] = useState('');
+  const [amount, setAmount] = useState<number | string>('');
+  const [lessonsCount, setLessonsCount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.card);
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // активные направления выбранного ребёнка
+  const childActiveSubjects = childSubjects.filter(
+    (cs) => cs.child_id === childId && cs.is_active
+  );
 
   const pricePerLesson = Number(lessonsCount) > 0 ? (Number(amount) / Number(lessonsCount)).toFixed(0) : '0';
 
@@ -38,12 +45,28 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     } else {
       setChildId('');
     }
+    setChildSubjectId('');
+  };
+
+  // при смене ребёнка/родителя — сбросить направление, если оно не принадлежит ребёнку
+  const handleChildChange = (newChildId: string) => {
+    setChildId(newChildId);
+    setChildSubjectId('');
+    // авто-выбор единственного направления, если оно одно
+    const subs = childSubjects.filter((cs) => cs.child_id === newChildId && cs.is_active);
+    if (subs.length === 1) {
+      setChildSubjectId(subs[0].id);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!parentId || !childId) {
       setError('Выберите родителя и ребенка');
+      return;
+    }
+    if (!childSubjectId) {
+      setError('Выберите направление (предмет и педагога)');
       return;
     }
     if (Number(amount) <= 0 || Number(lessonsCount) <= 0) {
@@ -109,7 +132,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           </label>
           <select
             value={childId}
-            onChange={(e) => setChildId(e.target.value)}
+            onChange={(e) => handleChildChange(e.target.value)}
             className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
           >
             {selectedParent?.children.map((c) => (
@@ -118,6 +141,29 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               </option>
             ))}
           </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-stone-700 mb-1">
+            Направление (предмет и педагог) <span className="text-rose-500">*</span>
+          </label>
+          <select
+            value={childSubjectId}
+            onChange={(e) => setChildSubjectId(e.target.value)}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white"
+          >
+            <option value="">— Выберите направление —</option>
+            {childActiveSubjects.map((cs) => (
+              <option key={cs.id} value={cs.id}>
+                {cs.subject_name} • {cs.teacher_name} ({Number(cs.lesson_price).toLocaleString('ru-RU')} ₽)
+              </option>
+            ))}
+          </select>
+          {childActiveSubjects.length === 0 && (
+            <p className="text-[11px] text-stone-400 mt-1">
+              У этого ребёнка нет активных направлений — сначала прикрепите направление в карточке клиента.
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">

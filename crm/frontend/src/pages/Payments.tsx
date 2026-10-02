@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import { ParentRead, PaymentRead } from '../types';
+import { ParentRead, PaymentRead, ChildSubjectRead } from '../types';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { CreditCard, Plus, ArrowDownRight, Calendar, User, Search } from 'lucide-react';
 import { PaymentModal } from '../components/payments/PaymentModal';
@@ -8,6 +8,7 @@ import { PaymentModal } from '../components/payments/PaymentModal';
 export const Payments: React.FC = () => {
   const [payments, setPayments] = useState<PaymentRead[]>([]);
   const [parents, setParents] = useState<ParentRead[]>([]);
+  const [childSubjects, setChildSubjects] = useState<ChildSubjectRead[]>([]);
   const [search, setSearch] = useState('');
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -15,9 +16,10 @@ export const Payments: React.FC = () => {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [pmts, prnts] = await Promise.all([api.getPayments(), api.getClients()]);
+      const [pmts, prnts, cs] = await Promise.all([api.getPayments(), api.getClients(), api.getChildSubjects()]);
       setPayments(pmts);
       setParents(prnts);
+      setChildSubjects(cs);
     } catch (err) {
       console.error('Failed to load payments', err);
     } finally {
@@ -177,6 +179,7 @@ export const Payments: React.FC = () => {
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
         parents={parents}
+        childSubjects={childSubjects}
         onSubmit={async (data) => {
           await api.createPayment(data);
           await loadData();

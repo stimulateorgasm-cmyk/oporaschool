@@ -546,6 +546,7 @@ export const Clients: React.FC = () => {
             setSelectedParentForPayment(undefined);
           }}
           parents={clients}
+          childSubjects={childSubjects}
           preselectedParentId={selectedParentForPayment}
           onSubmit={async (data) => {
             await api.createPayment(data);
