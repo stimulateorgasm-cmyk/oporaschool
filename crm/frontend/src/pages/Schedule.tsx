@@ -40,7 +40,7 @@ const STATUS_STYLE: Record<string, string> = {
   moved: 'bg-violet-100 border-violet-300 text-violet-900',
 };
 
-const formatLabel = (f: string) => (f === 'individual' ? 'Индивидуально' : 'Группа');
+const formatLabel = (f: string) => (f === 'individual' ? 'Индивидуально' : f === 'online' ? 'Онлайн' : 'Группа');
 
 // У группового занятия child_name пуст — показываем имя группы
 const displayName = (l: LessonRead) => l.child_name || l.group_name || '—';

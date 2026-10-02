@@ -51,6 +51,7 @@ export enum LessonPaymentStatus {
 export enum LessonFormat {
   individual = 'individual',
   group = 'group',
+  online = 'online',
 }
 
 export enum Recurrence {

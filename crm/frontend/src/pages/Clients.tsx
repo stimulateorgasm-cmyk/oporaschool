@@ -35,7 +35,7 @@ import { PaymentModal } from '../components/payments/PaymentModal';
 import { LessonModal } from '../components/schedule/LessonModal';
 import { Modal } from '../components/common/Modal';
 
-const formatLabel = (f: string) => (f === 'individual' ? 'Индивидуально' : 'Группа');
+const formatLabel = (f: string) => (f === 'individual' ? 'Индивидуально' : f === 'online' ? 'Онлайн' : 'Группа');
 
 export const Clients: React.FC = () => {
   const [clients, setClients] = useState<ParentRead[]>([]);

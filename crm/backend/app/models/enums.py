@@ -54,6 +54,7 @@ class LessonPaymentStatus(str, enum.Enum):
 class LessonFormat(str, enum.Enum):
     individual = "individual"
     group = "group"
+    online = "online"
 
 
 class Recurrence(str, enum.Enum):
